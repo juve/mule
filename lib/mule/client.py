@@ -14,10 +14,14 @@
 #
 import sys
 import os
+from optparse import OptionParser
 
 from mule import agent
+
+SYMLINK = os.getenv("MULE_SYMLINK","false").lower() == "true"
+RENAME = os.getenv("MULE_RENAME","false").lower() == "true"
 	
-def get(lfn, path, symlink=True):
+def get(lfn, path, symlink):
 	# If we already have path, then skip it
 	if os.path.exists(path):
 		print "Path %s already exists" % path
@@ -29,7 +33,7 @@ def get(lfn, path, symlink=True):
 	conn = agent.connect()
 	conn.get(lfn, path, symlink)
 	
-def put(path, lfn):
+def put(path, lfn, rename):
 	# If the path doesn't exist, then skip it
 	if not os.path.exists(path):
 		print "Path %s does not exist" % path
@@ -39,7 +43,7 @@ def put(path, lfn):
 		path = os.path.abspath(path)
 		
 	conn = agent.connect()
-	conn.put(path, lfn)
+	conn.put(path, lfn, rename)
 
 def delete(lfn):
 	conn = agent.connect()
@@ -63,23 +67,32 @@ def main():
 	args = sys.argv[2:]
 	
 	if cmd in ['get']:
+		parser = OptionParser("Usage: %prog get LFN PATH")
+		parser.add_option("-s", "--symlink", action="store_true", 
+			dest="symlink", default=SYMLINK,
+			help="symlink PATH to cached file [default: %default]")
+		(options, args) = parser.parse_args(args=args)
 		if len(args) != 2:
-			print "Specify LFN and PATH"
-			sys.exit(1)
+			parser.error("Specify LFN and PATH")
 		lfn = args[0]
 		path = args[1]
-		get(lfn, path)
+		get(lfn, path, options.symlink)
 	elif cmd in ['put']:
+		parser = OptionParser("Usage: %prog put PATH LFN")
+		parser.add_option("-r", "--rename", action="store_true", 
+			dest="rename", default=RENAME,
+			help="rename PATH to cached file [default: %default]")
+		(options, args) = parser.parse_args(args=args)
 		if len(args) != 2:
-			print "Specify PATH and LFN"
-			sys.exit(1)
+			pasrser.error("Specify PATH and LFN")
 		path = args[0]
 		lfn = args[1]
-		put(path, lfn)
+		put(path, lfn, options.rename)
 	elif cmd in ['del']:
+		parser = OptionParser("Usage: %prog del LFN")
+		(options, args) = parser.parse_args(args=args)
 		if len(args) != 1:
-			print "Specify LFN"
-			sys.exit(1)
+			parser.error("Specify LFN")
 		lfn = args[0]
 		delete(lfn)
 	elif cmd in ['-h','help','-help','--help']:
