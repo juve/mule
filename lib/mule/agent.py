@@ -16,7 +16,6 @@ import sys
 import os
 import socket
 import time
-import shutil
 import urllib
 from optparse import OptionParser
 from xmlrpclib import ServerProxy
@@ -24,39 +23,82 @@ from uuid import uuid4
 
 from mule import config, log, util, rls, db, server
 
-BLOCK_SIZE = int(os.getenv("MULE_BLOCK_SIZE",64*1024))
+BLOCK_SIZE = int(os.getenv("MULE_BLOCK_SIZE", 64*1024))
+DEFAULT_CACHE = os.getenv("MULE_CACHE", "/tmp/mule")
+DEFAULT_RLS = os.getenv("MULE_RLS")
 
 AGENT_PORT = 3881
 
 def connect(host='localhost',port=AGENT_PORT):
+	"""
+	Connect to the agent server running at host:port
+	"""
 	uri = "http://%s:%s" % (host, port)
 	return ServerProxy(uri, allow_none=True)
 	
 def fqdn():
+	"""
+	Get the fully-qualified domain name of this host
+	"""
 	hostname = socket.gethostname()
 	return socket.getfqdn(hostname)
-	
+
+def copy(src, dest):
+	"""
+	Copy file src to file dest
+	"""
+	f = None
+	g = None
+	try:
+		f = open(src,"rb")
+		g = open(dest,"wb")
+		copyobj(f,g)
+	finally:
+		if f: f.close()
+		if g: g.close()
+
+def copyobj(src, dest):
+	"""
+	Copy file-like object src to file-like object dest
+	"""
+	while 1:
+		buf = src.read(BLOCK_SIZE)
+		if not buf: break
+		dest.write(buf)
+		
+def download(self, url, path):
+	"""
+	Download url and store it at path
+	"""
+	f = None
+	g = None
+	try:
+		f = urllib.urlopen(url)
+		g = open(path, 'wb')
+		copyobj(f, g)
+	finally:
+		if f: f.close()
+		if g: g.close()
+		
 class AgentHandler(server.MuleRequestHandler):
 	def do_GET(self):
 		head, uuid = os.path.split(self.path)
 		path = self.server.agent.get_cfn(uuid)
+		f = None
 		try:
 			f = open(path, 'rb')
+			fs = os.fstat(f.fileno())
 			self.send_response(200)
 			self.send_header("Content-type", "application/octet-stream")
-			fs = os.fstat(f.fileno())
 			self.send_header("Content-Length", str(fs[6]))
 			self.send_header("Last-Modified", 
 							 self.date_time_string(fs.st_mtime))
 			self.end_headers()
-			while 1:
-				buf = f.read(BLOCK_SIZE)
-				if not buf:
-					break
-				self.wfile.write(buf)
-			f.close()
+			copyobj(f, self.wfile)
 		except IOError:
 			self.send_error(404, "File not found")
+		finally:
+			if f: f.close()
 		
 class Agent(object):
 	def __init__(self, rls_host, cache_dir, hostname=fqdn()):
@@ -121,9 +163,13 @@ class Agent(object):
 		if exists:
 			# Another thread is downloading it
 			# Wait for the other thread to finish
+			i = 1
 			while not self.db.ready(lfn):
 				self.log.info("waiting for %s" % lfn)
-				time.sleep(2)
+				time.sleep(5)
+				i += 1
+				if i > 60:
+					raise Exception("timeout waiting for %s" % lfn)
 			uuid = self.db.lookup(lfn)
 			cfn = self.get_cfn(uuid)
 		else:
@@ -144,7 +190,11 @@ class Agent(object):
 			# Download
 			for p in pfns:
 				# Download from peer to cache
-				if self.download(p, cfn): break
+				try:
+					download(p, cfn)
+					break
+				except Exception, e:
+					self.log.exception(e)
 		
 			# Update cache db		
 			self.db.update(lfn, uuid)
@@ -154,13 +204,11 @@ class Agent(object):
 			
 		# Validate cached copy
 		if not os.path.exists(cfn):
-			raise Exception("%s was not in cache" % cfn)
+			raise Exception("%s was not found in cache" % cfn)
 		
 		# Create link or copy to path
-		if symlink:
-			os.symlink(cfn, path)
-		else:
-			shutil.copy(cfn, path)
+		if symlink: os.symlink(cfn, path)
+		else: copy(cfn, path)
 		
 	def put(self, path, lfn, rename=True):
 		"""
@@ -196,7 +244,7 @@ class Agent(object):
 		
 		# Move path to cache
 		if rename: os.rename(path, cfn)
-		else: shutil.copy(path, cfn)
+		else: copy(path, cfn)
 		
 		# Update the cache db
 		self.db.update(lfn, uuid)
@@ -213,34 +261,19 @@ class Agent(object):
 		conn = rls.connect(self.rls_host)
 		rls.delete(lfn, pfn)
 			
-	def download(self, url, path):
-		"""
-		Download url and store it at path
-		"""
-		try:
-			f = open(path, 'wb')
-			g = urllib.urlopen(url)
-			while 1:
-				buf = f.read(BLOCK_SIZE)
-				if not buf:
-					break
-				g.write(buf)
-			return True
-		except Exception, e:
-			self.log.exception(e)
-			return False
-			
 def main():
 	home = config.get_home()
+	default_cache = os.path.join(home,"var","cache")
+	default_cache = os.getenv("MULE_CACHE", default_cache)
 	parser = OptionParser()
 	parser.add_option("-f", "--foreground", action="store_true", 
 		dest="foreground", default=False,
 		help="Do not fork [default: fork]")
 	parser.add_option("-r", "--rls", action="store", dest="rls",
-		default=os.getenv('MULE_RLS',None), metavar="HOST",
+		default=DEFAULT_RLS, metavar="HOST",
 		help="RLS host [def: %default]")
 	parser.add_option("-c", "--cache", action="store", dest="cache",
-		default=os.path.join(home,"var","cache"), metavar="DIR",
+		default=DEFAULT_CACHE, metavar="DIR",
 		help="Cache directory [def: %default]")
 
 	(options, args) = parser.parse_args()
