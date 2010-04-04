@@ -1,5 +1,4 @@
-Allow client to set symlink on get
-Allow client to set remove on put
+If LFN is not found in RLS, then try to fetch it based on URL
 Save size of files in cache
 Save timestamp of files in cache
 Automatically remove files from cache according to a policy
