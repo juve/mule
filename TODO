@@ -1,0 +1,9 @@
+Allow client to set symlink on get
+Allow client to set remove on put
+Save size of files in cache
+Save timestamp of files in cache
+Automatically remove files from cache according to a policy
+	(e.g. track disk usage and remove oldest file when max reached)
+Automatically remove files when they are deleted from RLS
+	(periodically scan files in the cache and remove them if they are not in the RLS)
+Figure out security (e.g. prevent the agent from giving access to anyone's files)

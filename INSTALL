@@ -1,0 +1,25 @@
+There are components you can install: the RLS server, the agent, and the
+client. If you are setting up a service for yourself or others, you need
+all three. If you are just configuring a VM image you need the Agent. If
+you are configuring a server you need the RLS server. If you already have
+a server and need to access it then you want the client.
+
+
+RLS INSTALL
+-----------
+1. Checkout from SVN into /usr/local/mule
+2. Start /usr/local/mule/bin/mule-rls
+
+
+AGENT INSTALL
+-------------
+1. Checkout from SVN into /usr/local/mule
+2. Create startup script for /usr/local/mule/bin/mule-agent
+3. Add startup script to /etc/rc.local
+
+
+CLIENT INSTALL
+--------------
+1. Checkout from SVN into /usr/local/mule
+2. Add /usr/local/mule/bin to your path
+3. Run 'mule help'
