@@ -138,6 +138,8 @@ class CacheDatabase(Database):
 		cur.execute("select uuid from cache where lfn=?",(lfn,))
 		row = cur.fetchone()
 		cur.close()
+		if row is None:
+			raise Exception("%s not found" % lfn)
 		return row['uuid']
 		
 	@with_connection
@@ -145,6 +147,9 @@ class CacheDatabase(Database):
 		cur = conn.cursor()
 		cur.execute("select status from cache where lfn=?",(lfn,))
 		row = cur.fetchone()
+		cur.close()
+		if row is None:
+			raise Exception("%s not found" % lfn)
 		return row['status'] == 'ready'
 		
 	@with_connection
