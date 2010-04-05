@@ -62,7 +62,8 @@ class Database(object):
 			self._create_db()
 			
 	def get_connection(self):
-		conn = sqlite3.connect(self.path)
+		# Use a large timeout
+		conn = sqlite3.connect(self.path, 60)
 		conn.row_factory = Row
 		return conn
 		
