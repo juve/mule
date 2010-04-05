@@ -66,7 +66,7 @@ def copyobj(src, dest):
 		if not buf: break
 		dest.write(buf)
 		
-def download(self, url, path):
+def download(url, path):
 	"""
 	Download url and store it at path
 	"""
