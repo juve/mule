@@ -107,7 +107,7 @@ class Agent(object):
 		self.cache_dir = cache_dir
 		self.hostname = hostname
 		self.db = db.CacheDatabase()
-		self.server = server.MuleServer('localhost', AGENT_PORT,
+		self.server = server.MuleServer('', AGENT_PORT,
 		                                requestHandler=AgentHandler)
 		self.server.agent = self
 	
