@@ -30,5 +30,13 @@ class MuleRequestHandler(SimpleXMLRPCRequestHandler):
 		
 class MuleServer(ThreadingMixIn, SimpleXMLRPCServer):
 	def __init__(self, host, port, requestHandler=MuleRequestHandler):
+		self.log = log.get_log("mule server")
 		SimpleXMLRPCServer.__init__(self, (host, port), requestHandler=requestHandler, 
 									allow_none=True, encoding=None, logRequests=True)
+	
+	def _dispatch(self, method, params):
+		try:
+			return SimpleXMLRPCServer._dispatch(self, method, params)
+		except Exception, e:
+			self.log.exception(e)
+			raise e

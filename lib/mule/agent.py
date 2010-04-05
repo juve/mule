@@ -176,6 +176,9 @@ class Agent(object):
 			# Lookup lfn
 			conn = rls.connect(self.rls_host)
 			pfns = conn.lookup(lfn)
+
+			if len(pfns) == 0:
+				raise Exception('%s does not exist in RLS' % lfn)
 		
 			# Create new name
 			uuid = self.get_uuid()
