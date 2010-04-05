@@ -104,7 +104,7 @@ class RLSDatabase(Database):
 		cur.close()
 		
 	@with_connection
-	def lookup(lfn):
+	def lookup(self, conn, lfn):
 		cur = conn.cursor()
 		cur.execute("select pfn from map where lfn=?",(lfn,))
 		pfns = []
