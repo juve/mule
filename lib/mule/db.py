@@ -28,6 +28,9 @@ def with_connection(method):
 				result = method(self, conn, *args, **kwargs)
 				conn.commit()
 				return result
+			except:
+				conn.rollback()
+				raise
 			finally:
 				conn.close()
 	return with_connection
@@ -66,6 +69,9 @@ class Database(object):
 		conn = sqlite3.connect(self.path, 60)
 		conn.row_factory = Row
 		return conn
+		
+	def close(self):
+		pass
 		
 class RLSDatabase(Database):
 	def __init__(self):
@@ -162,12 +168,17 @@ class CacheDatabase(Database):
 		return result is not None
 		
 	@with_connection
-	def insert(self, conn, lfn):
+	def try_insert(self, conn, lfn):
+		conn.isolation_level = "EXCLUSIVE"
 		cur = conn.cursor()
-		cur.execute("""
-			insert into cache (lfn, status) 
-			values (?,'unready')""",(lfn,))
+		cur.execute("""select lfn from cache where lfn=?""",(lfn,))
+		exists = cur.fetchone() is not None
+		if not exists:
+			cur.execute("""
+				insert into cache (lfn, status) 
+				values (?,'unready')""",(lfn,))
 		cur.close()
+		return exists
 		
 	@with_connection
 	def update(self, conn, lfn, uuid):
@@ -177,3 +188,9 @@ class CacheDatabase(Database):
 			set status='ready',uuid=? 
 			where lfn=?""", (uuid,lfn))
 		cur.close()
+
+if __name__ == '__main__':
+	db = RLSDatabase()
+	db.add("gideon","juve2")
+	print db.lookup("gideon")
+	print db.lookup("juve")

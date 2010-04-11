@@ -17,7 +17,8 @@ import os
 from optparse import OptionParser
 from xmlrpclib import ServerProxy
 
-from mule import config, log, util, db, server
+from mule import config, log, util, server
+from mule import bdb as db
 
 RLS_PORT = 3880
 
@@ -40,27 +41,29 @@ class RLS(object):
 			self.server.register_function(self.ready)
 			self.server.serve_forever()
 		except KeyboardInterrupt:
+			self.log.info("Shutting down RLS...")
+			self.db.close()
 			sys.exit(0)
 			
 	def lookup(self, lfn):
 		"""
 		Look up all the pfns for lfn
 		"""
-		self.log.info("lookup %s" % lfn)
+		self.log.debug("lookup %s" % lfn)
 		return self.db.lookup(lfn)
 		
 	def add(self, lfn, pfn):
 		"""
 		Add a mapping
 		"""
-		self.log.info("add %s %s" % (lfn, pfn))
+		self.log.debug("add %s %s" % (lfn, pfn))
 		self.db.add(lfn, pfn)
 		
 	def delete(self, lfn, pfn=None):
 		"""
 		Delete a mapping
 		"""
-		self.log.info("delete %s %s" % (lfn, pfn))
+		self.log.debug("delete %s %s" % (lfn, pfn))
 		self.db.delete(lfn, pfn)
 		
 	def ready(self):
@@ -84,7 +87,7 @@ def main():
 	# Fork
 	if not options.foreground:
 		util.daemonize()
-		
+	
 	os.chdir(config.get_home())
 	
 	# Configure logging (after the fork)

@@ -1,8 +1,12 @@
-If LFN is not found in RLS, then try to fetch it based on URL
+Fix get so that it doesn't create cache DB entries when the LFN does not exist
+If download fails, then remove entry from cache DB
+Make it impossible to update the cache db if the download fails
+Allow RLS PFNs to have priorities and return them in priority order
+Develop some scheme for ranking PFNs?
 Save size of files in cache
 Save timestamp of files in cache
 Automatically remove files from cache according to a policy
 	(e.g. track disk usage and remove oldest file when max reached)
-Automatically remove files when they are deleted from RLS
+Automatically remove files when they are deleted from RLS?
 	(periodically scan files in the cache and remove them if they are not in the RLS)
 Figure out security (e.g. prevent the agent from giving access to anyone's files)

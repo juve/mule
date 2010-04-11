@@ -14,6 +14,7 @@
 #
 import sys
 import os
+import time
 from optparse import OptionParser
 
 from mule import agent
@@ -31,7 +32,15 @@ def get(lfn, path, symlink):
 		path = os.path.abspath(path)
 		
 	conn = agent.connect()
-	conn.get(lfn, path, symlink)
+	while True:
+		status = conn.get(lfn, path, symlink)
+		if status == 'unready':
+			print "%s not ready" % lfn
+			time.sleep(5)
+		elif status == 'ready':
+			break
+		else:
+			raise Exception("Unrecognized status: %s" % status)
 	
 def put(path, lfn, rename):
 	# If the path doesn't exist, then skip it
@@ -44,19 +53,43 @@ def put(path, lfn, rename):
 		
 	conn = agent.connect()
 	conn.put(path, lfn, rename)
-
-def delete(lfn):
+	
+def remove(lfn, force):
 	conn = agent.connect()
-	conn.delete(lfn)
+	conn.remove(lfn, force)
+	
+def ls():
+	conn = agent.connect()
+	results = conn.list()
+	for rec in results:
+		print rec['lfn'], rec['status'], rec['uuid']
+	
+def rls_add(lfn, pfn):
+	conn = agent.connect()
+	conn.rls_add(lfn, pfn)
+	
+def rls_lookup(lfn):
+	conn = agent.connect()
+	pfns = conn.rls_lookup(lfn)
+	for pfn in pfns:
+		print pfn
+		
+def rls_delete(lfn, pfn):
+	conn = agent.connect()
+	conn.rls_delete(lfn, pfn)
 	
 def usage():
 	print "Usage: %s COMMAND" % os.path.basename(sys.argv[0])
 	print ""
 	print "Commands:"
-	print "   get LFN PATH   Download LFN and store it at PATH"
-	print "   put PATH LFN   Upload PATH to LFN"
-	print "   del LFN        Remove LFN"
-	print "   help           Display this message"
+	print "   get LFN PATH     Download LFN and store it at PATH"
+	print "   put PATH LFN     Upload PATH to LFN"
+	print "   remove LFN       Remove LFN from cache"
+	print "   list             List cache contents"
+	print "   rls_add LFN PFN  Add mapping to RLS"
+	print "   rls_delete LFN   Remove mappings for LFN from RLS"
+	print "   rls_lookup LFN   List RLS mappings for LFN"
+	print "   help             Display this message"
 	sys.exit(1)
 	
 def main():
@@ -88,13 +121,48 @@ def main():
 		path = args[0]
 		lfn = args[1]
 		put(path, lfn, options.rename)
-	elif cmd in ['del']:
-		parser = OptionParser("Usage: %prog del LFN")
+	elif cmd in ['remove','rm']:
+		parser = OptionParser("Usage: %prog remove [options] LFN")
+		parser.add_option("-f", "--force", action="store_true",
+			dest="force", default=False,
+			help="Force LFN to be removed from cache [default: %default]")
 		(options, args) = parser.parse_args(args=args)
 		if len(args) != 1:
 			parser.error("Specify LFN")
 		lfn = args[0]
-		delete(lfn)
+		remove(lfn, options.force)
+	elif cmd in ['list','ls']:
+		parser = OptionParser("Usage: %prog list")
+		(options, args) = parser.parse_args(args=args)
+		if len(args) > 0:
+			parser.error("Invalid argument")
+		ls()
+	elif cmd in ['rls_add','add']:
+		parser = OptionParser("Usage: %prog rls_add LFN PFN")
+		(options, args) = parser.parse_args(args=args)
+		if len(args) != 2:
+			parser.error("Specify LFN and PFN")
+		lfn = args[0]
+		pfn = args[1]
+		rls_add(lfn, pfn)
+	elif cmd in ['rls_lookup','rls_lu','lookup','lu']:
+		parser = OptionParser("Usage: %prog rls_lookup LFN")
+		(options, args) = parser.parse_args(args=args)
+		if len(args) != 1:
+			parser.error("Specify LFN")
+		lfn = args[0]
+		rls_lookup(lfn)
+	elif cmd in ['rls_delete','rls_del','delete','del']:
+		parser = OptionParser("Usage: %prog rls_del LFN [PFN]")
+		(options, args) = parser.parse_args(args=args)
+		if len(args) not in [1,2]:
+			parser.error("Specify LFN and/or PFN")
+		lfn = args[0]
+		if len(args) > 1:
+			pfn = args[1]
+		else:
+			pfn = None
+		rls_delete(lfn, pfn)
 	elif cmd in ['-h','help','-help','--help']:
 		usage()
 	else:

@@ -17,11 +17,13 @@ import os
 import socket
 import time
 import urllib
+from threading import Lock, Thread
 from optparse import OptionParser
 from xmlrpclib import ServerProxy
 from uuid import uuid4
 
-from mule import config, log, util, rls, db, server
+from mule import config, log, util, rls, server
+from mule import bdb as db
 
 BLOCK_SIZE = int(os.getenv("MULE_BLOCK_SIZE", 64*1024))
 DEFAULT_CACHE = os.getenv("MULE_CACHE", "/tmp/mule")
@@ -80,6 +82,19 @@ def download(url, path):
 		if f: f.close()
 		if g: g.close()
 		
+class DownloadThread(Thread):
+	def __init__(self, function):
+		Thread.__init__(self)
+		self.log = log.get_log("download thread")
+		self.setDaemon(True)
+		self.function = function
+		
+	def run(self):
+		try:
+			self.function()
+		except Exception, e:
+			self.log.exception(e)
+		
 class AgentHandler(server.MuleRequestHandler):
 	def do_GET(self):
 		head, uuid = os.path.split(self.path)
@@ -110,15 +125,22 @@ class Agent(object):
 		self.server = server.MuleServer('', AGENT_PORT,
 		                                requestHandler=AgentHandler)
 		self.server.agent = self
+		self.lock = Lock()
 	
 	def run(self):
 		try:
 			self.log.info("Starting agent...")
 			self.server.register_function(self.get)
 			self.server.register_function(self.put)
-			self.server.register_function(self.delete)
+			self.server.register_function(self.remove)
+			self.server.register_function(self.list)
+			self.server.register_function(self.rls_delete)
+			self.server.register_function(self.rls_add)
+			self.server.register_function(self.rls_lookup)
 			self.server.serve_forever()
 		except KeyboardInterrupt:
+			self.log.info("Stopping agent...")
+			self.db.close()
 			sys.exit(0)
 			
 	def get_uuid(self):
@@ -145,86 +167,110 @@ class Agent(object):
 		"""
 		Get lfn and store it at path
 		"""
-		self.log.info("get %s %s" % (lfn, path))
+		self.log.debug("get %s %s" % (lfn, path))
 		
 		# Check path
 		if os.path.exists(path):
 			raise Exception("%s already exists" % path)
 		
-		# Try to insert a new record
-		try:
-			# If it succeeds, then we need to get it
-			self.db.insert(lfn)
-			exists = False
-		except Exception, e:
-			# If it fails then the file is in the cache already
-			exists = True
+		# Check to see if the file is cached
+		rec = self.db.get(lfn)
+		if rec is None:
+			thread = None
+			
+			# Try to insert a new record
+			self.lock.acquire()
+			try:
+				rec = self.db.get(lfn)
+				if rec is None:
+					self.db.put(lfn)
+					def get_file():
+						try:
+							self.do_get(lfn, path, symlink)
+						except Exception, e:
+							self.log.exception(e)
+							self.db.update(lfn, 'failed', None)
+					thread = DownloadThread(get_file)
+					thread.start()
+			finally:
+				self.lock.release()
+			
+			# If we launched a thread, wait up to 5 seconds
+			if thread is not None:
+				thread.join(5) 
+				
+			rec = self.db.get(lfn)
 		
-		if exists:
-			# Another thread is downloading it
-			# Wait for the other thread to finish
-			i = 1
-			while not self.db.ready(lfn):
-				self.log.info("waiting for %s" % lfn)
-				time.sleep(5)
-				i += 1
-				if i > 60:
-					raise Exception("timeout waiting for %s" % lfn)
-			uuid = self.db.lookup(lfn)
-			cfn = self.get_cfn(uuid)
-		else:
-			# Lookup lfn
-			conn = rls.connect(self.rls_host)
-			pfns = conn.lookup(lfn)
-
-			if len(pfns) == 0:
+		# If it is ready, then copy it to path
+		if rec['status'] == 'ready':
+			cfn = self.get_cfn(rec['uuid'])
+			self.log.debug("Copying %s to %s" % (cfn, path))
+			if not os.path.exists(cfn):
+				raise Exception("%s was not found in cache" % cfn)
+			if symlink:
+				os.symlink(cfn, path)
+			else:
+				copy(cfn, path)
+		
+		# If it failed, then raise an exception
+		if rec['status'] == 'failed':
+			raise Exception("Unable to get %s" % lfn)
+			
+		return rec['status']
+	
+	def do_get(self, lfn, path, symlink):
+		
+		# Lookup lfn
+		conn = rls.connect(self.rls_host)
+		pfns = conn.lookup(lfn)
+		
+		# If not found in RLS
+		if len(pfns) == 0:
+			# If it is a URL, then try it
+			if lfn.startswith('http'):
+				self.log.info("Attempting to download %s directly" % lfn)
+				pfns = [lfn]
+			else:
 				raise Exception('%s does not exist in RLS' % lfn)
 		
-			# Create new name
-			uuid = self.get_uuid()
-			cfn = self.get_cfn(uuid)
-			pfn = self.get_pfn(uuid)
+		# Create new name
+		uuid = self.get_uuid()
+		cfn = self.get_cfn(uuid)
+		pfn = self.get_pfn(uuid)
 			
-			# Create dir if needed
-			d = os.path.dirname(cfn)
-			if not os.path.exists(d):
-				os.makedirs(d)
+		# Create dir if needed
+		d = os.path.dirname(cfn)
+		if not os.path.exists(d):
+			os.makedirs(d)
 			
-			# Download
-			for p in pfns:
-				# Download from peer to cache
-				try:
-					download(p, cfn)
-					break
-				except Exception, e:
-					self.log.exception(e)
+		# Download the file
+		success = False
+		for p in pfns:
+			try:
+				download(p, cfn)
+				success = True
+				break
+			except Exception, e:
+				self.log.exception(e)
 		
-			# Update cache db		
-			self.db.update(lfn, uuid)
-			
-			# Register lfn->pfn
+		if success:
 			conn.add(lfn, pfn)
-			
-		# Validate cached copy
-		if not os.path.exists(cfn):
-			raise Exception("%s was not found in cache" % cfn)
-		
-		# Create link or copy to path
-		if symlink: os.symlink(cfn, path)
-		else: copy(cfn, path)
+			self.db.update(lfn, 'ready', uuid)
+		else:
+			raise Exception('Unable to get %s from any peer' % lfn)
 		
 	def put(self, path, lfn, rename=True):
 		"""
 		Put path into cache and register lfn
 		"""
-		self.log.info("put %s %s" % (path, lfn))
+		self.log.debug("put %s %s" % (path, lfn))
 		
 		# Check for path
 		if not os.path.exists(path):
 			raise Exception("%s does not exist", path)
 		
 		# If its already in cache, then return
-		if self.db.cached(lfn):
+		if self.db.get(lfn) is not None:
 			self.log.info("%s already cached" % lfn)
 			return
 		
@@ -243,31 +289,80 @@ class Agent(object):
 			os.makedirs(d)
 		
 		# Create an entry in the cache db
-		self.db.insert(lfn)
+		self.db.put(lfn)
 		
 		# Move path to cache
-		if rename: os.rename(path, cfn)
-		else: copy(path, cfn)
+		if rename:
+			os.rename(path, cfn)
+		else:
+			copy(path, cfn)
 		
 		# Update the cache db
-		self.db.update(lfn, uuid)
+		self.db.update(lfn, 'ready', uuid)
 		self.log.info("%s stored as %s" % (lfn, uuid))
 		
 		# Register lfn->pfn
 		conn.add(lfn, pfn)
 		
-	def delete(self, lfn, pfn=None):
+	def remove(self, lfn, force=False):
+		"""
+		Remove lfn from cache
+		"""
+		self.log.debug("remove %s" % lfn)
+		rec = self.db.get(lfn)
+		if rec is None:
+			return
+			
+		if not force and rec['status'] != 'ready':
+			raise Exception('Cannot remove %s' % lfn)
+		
+		# Remove from database
+		self.db.remove(lfn)
+		
+		uuid = rec['uuid']
+		if uuid is not None:
+			# Remove RLS mapping
+			pfn = self.get_pfn(uuid)
+			conn = rls.connect(self.rls_host)
+			conn.delete(lfn, pfn)
+
+			# Remove cached copy
+			cfn = self.get_cfn(uuid)
+			if os.path.isfile(cfn):
+				os.unlink(cfn)
+		
+	def list(self):
+		"""
+		List all cached files
+		"""
+		self.log.debug("list")
+		return self.db.list()
+		
+	def rls_delete(self, lfn, pfn=None):
 		"""
 		Delete lfn->pfn mapping
 		"""
-		self.log.info("delete %s %s" % (lfn, pfn))
+		self.log.debug("delete %s %s" % (lfn, pfn))
 		conn = rls.connect(self.rls_host)
-		rls.delete(lfn, pfn)
-			
+		conn.delete(lfn, pfn)
+		
+	def rls_add(self, lfn, pfn):
+		"""
+		Add lfn->pfn mapping to rls
+		"""
+		self.log.debug("add %s %s" % (lfn, pfn))
+		conn = rls.connect(self.rls_host)
+		conn.add(lfn, pfn)
+		
+	def rls_lookup(self, lfn):
+		"""
+		Lookup RLS mappings for lfn
+		"""
+		self.log.debug("lookup %s" % lfn)
+		conn = rls.connect(self.rls_host)
+		return conn.lookup(lfn)
+		
 def main():
-	home = config.get_home()
-	default_cache = os.path.join(home,"var","cache")
-	default_cache = os.getenv("MULE_CACHE", default_cache)
 	parser = OptionParser()
 	parser.add_option("-f", "--foreground", action="store_true", 
 		dest="foreground", default=False,
