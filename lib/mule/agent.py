@@ -88,9 +88,9 @@ def ensure_path(path):
 	"""
 	Create path if it doesn't exist
 	"""
-	if not os.path.exists(d):
+	if not os.path.exists(path):
 		try:
-			os.makedirs(d)
+			os.makedirs(path)
 		except OSError, e:
 			if e.errno != errno.EEXIST:
 				raise
