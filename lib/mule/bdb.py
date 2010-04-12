@@ -38,7 +38,7 @@ def with_transaction(method, retries=3):
 				result = method(self, txn, *args, **kwargs)
 				txn.commit()
 				return result
-			except DBLockDeadlockError, e:
+			except bdb.DBLockDeadlockError, e:
 				txn.abort()
 				deadlocks += 1
 				if deadlocks < retries:
@@ -180,7 +180,7 @@ class CacheDatabase(Database):
 		self.db.delete(lfn, txn)
 	
 	@with_transaction
-	def list(self):
+	def list(self, txn):
 		cur = self.db.cursor(txn)
 		try:
 			result = []
