@@ -32,11 +32,13 @@ def get(lfn, path, symlink):
 		path = os.path.abspath(path)
 		
 	conn = agent.connect()
+	sleeptime = 1
 	while True:
 		status = conn.get(lfn, path, symlink)
 		if status == 'unready':
-			print "%s not ready" % lfn
-			time.sleep(5)
+			print "%s not ready: retrying in %d" % (lfn, sleeptime)
+			time.sleep(sleeptime)
+			sleeptime = min(sleeptime+1, 5)
 		elif status == 'ready':
 			break
 		else:
