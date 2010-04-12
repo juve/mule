@@ -15,10 +15,19 @@
 import sys
 import os
 import time
-import bsddb.db as bdb
 import cPickle as pickle
-from mule import log, config
 from threading import Thread
+from mule import log, config
+
+try:
+	import bsddb3.db as bdb
+except ImportError:
+	import bsddb.db as bdb
+
+version = tuple([int(y) for y in bdb.__version__.split(".")])
+if version < (4,7):
+	raise ImportError('bsddb version 4.7 or later required')
+del version
 
 def with_transaction(method):
 	def with_transaction(self, *args, **kwargs):
