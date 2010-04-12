@@ -108,13 +108,8 @@ class RLSDatabase(Database):
 		
 	@with_transaction
 	def add(self, txn, lfn, pfn):
-		cur = self.db.cursor(txn)
-		try:
-			current = cur.get_both(lfn, pfn)
-			if current is None:
-				cur.put(lfn, pfn, flags=bdb.DB_KEYLAST)
-		finally:
-			cur.close()
+		if self.db.get_both(lfn, pfn, txn) is None:
+			self.db.put(lfn, pfn, txn)
 	
 	@with_transaction
 	def delete(self, txn, lfn, pfn=None):
@@ -152,20 +147,16 @@ class CacheDatabase(Database):
 		Database.__init__(self, path, "cache", duplicates=False)
 	
 	def get(self, lfn):
-		cur = self.db.cursor()
-		try:
-			current = cur.set(lfn)
-			if current is not None:
-				return pickle.loads(current[1])
-			else:
-				return None
-		finally:
-			cur.close()
+		current = self.db.get(lfn)
+		if current is not None:
+			return pickle.loads(current)
+		else:
+			return None
 		
 	@with_transaction
 	def put(self, txn, lfn):
 		next = { 'status': 'unready', 'uuid': None }
-		self.db.put(lfn, pickle.dumps(next), txn, bdb.DB_NOOVERWRITE)
+		self.db.put(lfn, pickle.dumps(next), txn)
 			
 	@with_transaction
 	def remove(self, txn, lfn):
@@ -193,12 +184,13 @@ class CacheDatabase(Database):
 
 if __name__ == '__main__':
 	log.configure()
-	db = CacheDatabase()
+	db = RLSDatabase()
 	try:
-		if db.put("b"):
-			rec = db.get("b")
-			if rec['status'] == "unready":
-				db.update("b", "123123123123")
-		print db.get("b")	
+		db.delete("a")
+		db.add("a","b")
+		db.add("a","c")
+		print db.lookup("a")
+		db.add("a","c")	
+		print db.lookup("a")
 	finally:
 		db.close()

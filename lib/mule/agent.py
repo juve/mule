@@ -175,10 +175,10 @@ class Agent(object):
 		
 		# Check to see if the file is cached
 		rec = self.db.get(lfn)
+		
+		# If it isn't in cache, try to get it
 		if rec is None:
 			thread = None
-			
-			# Try to insert a new record
 			self.lock.acquire()
 			try:
 				rec = self.db.get(lfn)
@@ -197,8 +197,9 @@ class Agent(object):
 			
 			# If we launched a thread, wait up to 5 seconds
 			if thread is not None:
-				thread.join(5) 
-				
+				thread.join(5)
+			
+			# Retrieve the latest status
 			rec = self.db.get(lfn)
 		
 		# If it is ready, then copy it to path
@@ -214,8 +215,9 @@ class Agent(object):
 		
 		# If it failed, then raise an exception
 		if rec['status'] == 'failed':
-			raise Exception("Unable to get %s" % lfn)
-			
+			raise Exception("Unable to get %s: failed" % lfn)
+		
+		# Otherwise it isn't ready, just return the current status
 		return rec['status']
 	
 	def do_get(self, lfn, path, symlink):
@@ -224,14 +226,13 @@ class Agent(object):
 		conn = rls.connect(self.rls_host)
 		pfns = conn.lookup(lfn)
 		
+		# As a last resort, get it from the source if the source is a URL
+		if lfn.startswith('http'):
+			pfns.append(lfn)
+				
 		# If not found in RLS
 		if len(pfns) == 0:
-			# If it is a URL, then try it
-			if lfn.startswith('http'):
-				self.log.info("Attempting to download %s directly" % lfn)
-				pfns = [lfn]
-			else:
-				raise Exception('%s does not exist in RLS' % lfn)
+			raise Exception('%s does not exist in RLS' % lfn)
 		
 		# Create new name
 		uuid = self.get_uuid()
@@ -257,7 +258,7 @@ class Agent(object):
 			conn.add(lfn, pfn)
 			self.db.update(lfn, 'ready', uuid)
 		else:
-			raise Exception('Unable to get %s from any peer' % lfn)
+			raise Exception('Unable to get %s: all pfns failed' % lfn)
 		
 	def put(self, path, lfn, rename=True):
 		"""
@@ -271,12 +272,8 @@ class Agent(object):
 		
 		# If its already in cache, then return
 		if self.db.get(lfn) is not None:
-			self.log.info("%s already cached" % lfn)
+			self.log.error("%s already cached" % lfn)
 			return
-		
-		# Make sure RLS is available
-		conn = rls.connect(self.rls_host)
-		conn.ready()
 		
 		# Create new names
 		uuid = self.get_uuid()
@@ -299,9 +296,9 @@ class Agent(object):
 		
 		# Update the cache db
 		self.db.update(lfn, 'ready', uuid)
-		self.log.info("%s stored as %s" % (lfn, uuid))
 		
 		# Register lfn->pfn
+		conn = rls.connect(self.rls_host)
 		conn.add(lfn, pfn)
 		
 	def remove(self, lfn, force=False):
@@ -387,6 +384,13 @@ def main():
 		
 	if not os.path.isdir(options.cache):
 		os.makedirs(options.cache)
+		
+	# See if RLS is ready
+	try:
+		conn = rls.connect(options.rls)
+		conn.ready()
+	except Exception, e:
+		print "WARNING: RLS is not ready"
 		
 	# Fork
 	if not options.foreground:
