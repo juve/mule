@@ -14,6 +14,7 @@
 #
 import sys
 import os
+import signal
 from optparse import OptionParser
 from xmlrpclib import ServerProxy
 
@@ -30,20 +31,24 @@ class RLS(object):
 	def __init__(self):
 		self.log = log.get_log("rls")
 		self.server = server.MuleServer('', RLS_PORT)
-		self.db = db.RLSDatabase()
 		
+	def stop(self, signum=None, frame=None):
+		self.log.info("Shutting down RLS...")
+		self.db.close()
+		sys.exit(0)
+			
 	def run(self):
 		try:
 			self.log.info("Starting RLS...")
+			self.db = db.RLSDatabase()
+			signal.signal(signal.SIGTERM, self.stop)
 			self.server.register_function(self.lookup)
 			self.server.register_function(self.add)
 			self.server.register_function(self.delete)
 			self.server.register_function(self.ready)
 			self.server.serve_forever()
 		except KeyboardInterrupt:
-			self.log.info("Shutting down RLS...")
-			self.db.close()
-			sys.exit(0)
+			self.stop()
 			
 	def lookup(self, lfn):
 		"""

@@ -14,6 +14,8 @@
 #
 import sys
 import os
+import errno
+import signal
 import socket
 import time
 import urllib
@@ -82,6 +84,17 @@ def download(url, path):
 		if f: f.close()
 		if g: g.close()
 		
+def ensure_path(path):
+	"""
+	Create path if it doesn't exist
+	"""
+	if not os.path.exists(d):
+		try:
+			os.makedirs(d)
+		except OSError, e:
+			if e.errno != errno.EEXIST:
+				raise
+		
 class DownloadThread(Thread):
 	def __init__(self, function):
 		Thread.__init__(self)
@@ -121,15 +134,21 @@ class Agent(object):
 		self.rls_host = rls_host
 		self.cache_dir = cache_dir
 		self.hostname = hostname
-		self.db = db.CacheDatabase()
 		self.server = server.MuleServer('', AGENT_PORT,
 		                                requestHandler=AgentHandler)
 		self.server.agent = self
 		self.lock = Lock()
+		
+	def stop(self, signum=None, frame=None):
+		self.log.info("Stopping agent...")
+		self.db.close()
+		sys.exit(0)
 	
 	def run(self):
 		try:
 			self.log.info("Starting agent...")
+			self.db = db.CacheDatabase()
+			signal.signal(signal.SIGTERM, self.stop)
 			self.server.register_function(self.get)
 			self.server.register_function(self.put)
 			self.server.register_function(self.remove)
@@ -139,9 +158,7 @@ class Agent(object):
 			self.server.register_function(self.rls_lookup)
 			self.server.serve_forever()
 		except KeyboardInterrupt:
-			self.log.info("Stopping agent...")
-			self.db.close()
-			sys.exit(0)
+			self.stop()
 			
 	def get_uuid(self):
 		"""
@@ -241,8 +258,7 @@ class Agent(object):
 			
 		# Create dir if needed
 		d = os.path.dirname(cfn)
-		if not os.path.exists(d):
-			os.makedirs(d)
+		ensure_path(d)
 			
 		# Download the file
 		success = False
@@ -282,8 +298,7 @@ class Agent(object):
 		
 		# Create dir if needed
 		d = os.path.dirname(cfn)
-		if not os.path.exists(d):
-			os.makedirs(d)
+		ensure_path(d)
 		
 		# Create an entry in the cache db
 		self.db.put(lfn)
