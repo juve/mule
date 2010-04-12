@@ -1,4 +1,4 @@
-BSDDB3=bsddb3-5.0.0.tar.gz
+BSDDB3=bsddb3-5.0.0
 
 all: lib/bsddb3
 
