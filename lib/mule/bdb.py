@@ -80,8 +80,6 @@ class Database(object):
 		self.env.set_flags(bdb.DB_TXN_NOSYNC, True)
 		if bdb.version() > (4,7):
 			self.env.log_set_config(bdb.DB_LOG_AUTO_REMOVE, True)
-		else:
-			self.env.log_set_config(bdb.DB_LOG_AUTOREMOVE, True)
 		self.env.open(self.path, bdb.DB_CREATE | bdb.DB_INIT_LOCK | 
 				bdb.DB_INIT_LOG | bdb.DB_INIT_MPOOL | bdb.DB_INIT_TXN | 
 				bdb.DB_RECOVER | bdb.DB_THREAD)
