@@ -164,7 +164,7 @@ class CacheDatabase(Database):
 	
 	@with_transaction
 	def get(self, txn, lfn):
-		current = self.db.get(lfn, txn)
+		current = self.db.get(lfn, None, txn)
 		if current is not None:
 			return pickle.loads(current)
 		else:
