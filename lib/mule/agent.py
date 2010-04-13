@@ -19,10 +19,10 @@ import signal
 import socket
 import time
 import urllib
+import hashlib
 from threading import Lock, Thread
 from optparse import OptionParser
 from xmlrpclib import ServerProxy
-from uuid import uuid4
 
 from mule import config, log, util, rls, server
 from mule import bdb as db
@@ -160,11 +160,11 @@ class Agent(object):
 		except KeyboardInterrupt:
 			self.stop()
 			
-	def get_uuid(self):
+	def get_uuid(self, lfn):
 		"""
 		Generate a unique ID
 		"""
-		return str(uuid4())
+		return hashlib.sha1(lfn).hexdigest()
 		
 	def get_cfn(self, uuid):
 		"""
@@ -252,9 +252,11 @@ class Agent(object):
 			raise Exception('%s does not exist in RLS' % lfn)
 		
 		# Create new name
-		uuid = self.get_uuid()
+		uuid = self.get_uuid(lfn)
 		cfn = self.get_cfn(uuid)
 		pfn = self.get_pfn(uuid)
+		if os.path.exists(cfn):
+			self.log.warning("Duplicate uuid detected: %s" % uuid)
 			
 		# Create dir if needed
 		d = os.path.dirname(cfn)
@@ -292,9 +294,11 @@ class Agent(object):
 			return
 		
 		# Create new names
-		uuid = self.get_uuid()
+		uuid = self.get_uuid(lfn)
 		cfn = self.get_cfn(uuid)
 		pfn = self.get_pfn(uuid)
+		if os.path.exists(cfn):
+			self.log.warning("Duplicate uuid detected: %s" % uuid)
 		
 		# Create dir if needed
 		d = os.path.dirname(cfn)
