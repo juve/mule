@@ -29,14 +29,14 @@ def timed(function):
 			return function(*args, **kwargs)
 		finally:
 			end = time.time()
-			print "Called %s in %f seconds" % (function.__name__, end-start)
+			sys.stderr.write("Called %s in %f seconds\n" % (function.__name__, end-start))
 	return timer
 
 @timed
 def get(lfn, path, symlink):
 	# If we already have path, then skip it
 	if os.path.exists(path):
-		print "Path %s already exists" % path
+		sys.stderr.write("Path %s already exists\n" % path)
 		return
 	
 	if not os.path.isabs(path):
@@ -47,19 +47,19 @@ def get(lfn, path, symlink):
 	while True:
 		status = conn.get(lfn, path, symlink)
 		if status == 'unready':
-			print "%s not ready: retrying in %d" % (lfn, sleeptime)
+			sys.stderr.write("%s not ready: retrying in %d\n" % (lfn, sleeptime))
 			time.sleep(sleeptime)
 			sleeptime = min(sleeptime+1, 5)
 		elif status == 'ready':
 			break
 		else:
-			raise Exception("Unrecognized status: %s" % status)
+			raise Exception("Unrecognized status: %s\n" % status)
 
 @timed	
 def put(path, lfn, rename):
 	# If the path doesn't exist, then skip it
 	if not os.path.exists(path):
-		print "Path %s does not exist" % path
+		sys.stderr.write("Path %s does not exist\n" % path)
 		return
 		
 	if not os.path.isabs(path):
@@ -98,17 +98,20 @@ def rls_delete(lfn, pfn):
 	conn.rls_delete(lfn, pfn)
 	
 def usage():
-	print "Usage: %s COMMAND" % os.path.basename(sys.argv[0])
-	print ""
-	print "Commands:"
-	print "   get LFN PATH     Download LFN and store it at PATH"
-	print "   put PATH LFN     Upload PATH to LFN"
-	print "   remove LFN       Remove LFN from cache"
-	print "   list             List cache contents"
-	print "   rls_add LFN PFN  Add mapping to RLS"
-	print "   rls_delete LFN   Remove mappings for LFN from RLS"
-	print "   rls_lookup LFN   List RLS mappings for LFN"
-	print "   help             Display this message"
+	sys.stderr.write(
+		"Usage: %s COMMAND\n" % os.path.basename(sys.argv[0]))
+	sys.stderr.write(
+		"""
+Commands:
+   get LFN PATH     Download LFN and store it at PATH
+   put PATH LFN     Upload PATH to LFN
+   remove LFN       Remove LFN from cache
+   list             List cache contents
+   rls_add LFN PFN  Add mapping to RLS
+   rls_delete LFN   Remove mappings for LFN from RLS
+   rls_lookup LFN   List RLS mappings for LFN
+   help             Display this message
+"""
 	sys.exit(1)
 	
 def main():
@@ -185,7 +188,7 @@ def main():
 	elif cmd in ['-h','help','-help','--help']:
 		usage()
 	else:
-		print "Unrecognized argument: %s" % cmd
+		sys.stderr.write("Unrecognized argument: %s\n" % cmd)
 	
 	
 if __name__ == '__main__':
