@@ -98,10 +98,8 @@ def rls_delete(lfn, pfn):
 	conn.rls_delete(lfn, pfn)
 	
 def usage():
-	sys.stderr.write(
-		"Usage: %s COMMAND\n" % os.path.basename(sys.argv[0]))
-	sys.stderr.write(
-		"""
+	sys.stderr.write("Usage: %s COMMAND\n" % os.path.basename(sys.argv[0]))
+	sys.stderr.write("""
 Commands:
    get LFN PATH     Download LFN and store it at PATH
    put PATH LFN     Upload PATH to LFN
@@ -111,7 +109,7 @@ Commands:
    rls_delete LFN   Remove mappings for LFN from RLS
    rls_lookup LFN   List RLS mappings for LFN
    help             Display this message
-"""
+""")
 	sys.exit(1)
 	
 def main():
