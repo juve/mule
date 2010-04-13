@@ -21,7 +21,18 @@ from mule import agent
 
 SYMLINK = os.getenv("MULE_SYMLINK","false").lower() == "true"
 RENAME = os.getenv("MULE_RENAME","false").lower() == "true"
-	
+
+def timed(function):
+	def timer(*args, **kwargs):
+		try:
+			start = time.time()
+			return function(*args, **kwargs)
+		finally:
+			end = time.time()
+			print "Called %s in %f seconds" % (function.__name__, end-start)
+	return timer
+
+@timed
 def get(lfn, path, symlink):
 	# If we already have path, then skip it
 	if os.path.exists(path):
@@ -43,7 +54,8 @@ def get(lfn, path, symlink):
 			break
 		else:
 			raise Exception("Unrecognized status: %s" % status)
-	
+
+@timed	
 def put(path, lfn, rename):
 	# If the path doesn't exist, then skip it
 	if not os.path.exists(path):
@@ -52,30 +64,35 @@ def put(path, lfn, rename):
 		
 	if not os.path.isabs(path):
 		path = os.path.abspath(path)
-		
+	
 	conn = agent.connect()
 	conn.put(path, lfn, rename)
-	
+
+@timed
 def remove(lfn, force):
 	conn = agent.connect()
 	conn.remove(lfn, force)
-	
+
+@timed
 def ls():
 	conn = agent.connect()
 	results = conn.list()
 	for rec in results:
 		print rec['lfn'], rec['status'], rec['uuid']
-	
+
+@timed
 def rls_add(lfn, pfn):
 	conn = agent.connect()
 	conn.rls_add(lfn, pfn)
 	
+@timed
 def rls_lookup(lfn):
 	conn = agent.connect()
 	pfns = conn.rls_lookup(lfn)
 	for pfn in pfns:
 		print pfn
-		
+
+@timed	
 def rls_delete(lfn, pfn):
 	conn = agent.connect()
 	conn.rls_delete(lfn, pfn)
