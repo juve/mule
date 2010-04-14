@@ -17,7 +17,7 @@ import os
 import time
 from optparse import OptionParser
 
-from mule import agent
+from mule import cache
 
 SYMLINK = os.getenv("MULE_SYMLINK","false").lower() == "true"
 RENAME = os.getenv("MULE_RENAME","false").lower() == "true"
@@ -42,7 +42,7 @@ def get(lfn, path, symlink):
 	if not os.path.isabs(path):
 		path = os.path.abspath(path)
 		
-	conn = agent.connect()
+	conn = cache.connect()
 	sleeptime = 1
 	while True:
 		status = conn.get(lfn, path, symlink)
@@ -65,36 +65,36 @@ def put(path, lfn, rename):
 	if not os.path.isabs(path):
 		path = os.path.abspath(path)
 	
-	conn = agent.connect()
+	conn = cache.connect()
 	conn.put(path, lfn, rename)
 
 @timed
 def remove(lfn, force):
-	conn = agent.connect()
+	conn = cache.connect()
 	conn.remove(lfn, force)
 
 @timed
 def ls():
-	conn = agent.connect()
+	conn = cache.connect()
 	results = conn.list()
 	for rec in results:
 		print rec['lfn'], rec['status'], rec['uuid']
 
 @timed
 def rls_add(lfn, pfn):
-	conn = agent.connect()
+	conn = cache.connect()
 	conn.rls_add(lfn, pfn)
 	
 @timed
 def rls_lookup(lfn):
-	conn = agent.connect()
+	conn = cache.connect()
 	pfns = conn.rls_lookup(lfn)
 	for pfn in pfns:
 		print pfn
 
 @timed	
 def rls_delete(lfn, pfn):
-	conn = agent.connect()
+	conn = cache.connect()
 	conn.rls_delete(lfn, pfn)
 	
 def usage():

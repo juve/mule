@@ -28,14 +28,14 @@ from mule import config, log, util, rls, server
 from mule import bdb as db
 
 BLOCK_SIZE = int(os.getenv("MULE_BLOCK_SIZE", 64*1024))
-DEFAULT_CACHE = os.getenv("MULE_CACHE", "/tmp/mule")
+DEFAULT_DIR = os.getenv("MULE_CACHE_DIR", "/tmp/mule")
 DEFAULT_RLS = os.getenv("MULE_RLS")
 
-AGENT_PORT = 3881
+CACHE_PORT = 3881
 
-def connect(host='localhost',port=AGENT_PORT):
+def connect(host='localhost',port=CACHE_PORT):
 	"""
-	Connect to the agent server running at host:port
+	Connect to the cache server running at host:port
 	"""
 	uri = "http://%s:%s" % (host, port)
 	return ServerProxy(uri, allow_none=True)
@@ -108,10 +108,10 @@ class DownloadThread(Thread):
 		except Exception, e:
 			self.log.exception(e)
 		
-class AgentHandler(server.MuleRequestHandler):
+class CacheHandler(server.MuleRequestHandler):
 	def do_GET(self):
 		head, uuid = os.path.split(self.path)
-		path = self.server.agent.get_cfn(uuid)
+		path = self.server.cache.get_cfn(uuid)
 		f = None
 		try:
 			f = open(path, 'rb')
@@ -128,25 +128,25 @@ class AgentHandler(server.MuleRequestHandler):
 		finally:
 			if f: f.close()
 		
-class Agent(object):
+class Cache(object):
 	def __init__(self, rls_host, cache_dir, hostname=fqdn()):
-		self.log = log.get_log("agent")
+		self.log = log.get_log("cache")
 		self.rls_host = rls_host
 		self.cache_dir = cache_dir
 		self.hostname = hostname
-		self.server = server.MuleServer('', AGENT_PORT,
-		                                requestHandler=AgentHandler)
-		self.server.agent = self
+		self.server = server.MuleServer('', CACHE_PORT,
+		                                requestHandler=CacheHandler)
+		self.server.cache = self
 		self.lock = Lock()
 		
 	def stop(self, signum=None, frame=None):
-		self.log.info("Stopping agent...")
+		self.log.info("Stopping cache...")
 		self.db.close()
 		sys.exit(0)
 	
 	def run(self):
 		try:
-			self.log.info("Starting agent...")
+			self.log.info("Starting cache...")
 			self.db = db.CacheDatabase()
 			signal.signal(signal.SIGTERM, self.stop)
 			self.server.register_function(self.get)
@@ -178,7 +178,7 @@ class Agent(object):
 		"""
 		Get a pfn for the given uuid
 		"""
-		return "http://%s:%s/%s" % (self.hostname, AGENT_PORT, uuid)
+		return "http://%s:%s/%s" % (self.hostname, CACHE_PORT, uuid)
 		
 	def get(self, lfn, path, symlink=True):
 		"""
@@ -386,8 +386,8 @@ def main():
 	parser.add_option("-r", "--rls", action="store", dest="rls",
 		default=DEFAULT_RLS, metavar="HOST",
 		help="RLS host [def: %default]")
-	parser.add_option("-c", "--cache", action="store", dest="cache",
-		default=DEFAULT_CACHE, metavar="DIR",
+	parser.add_option("-d", "--directory", action="store", dest="cache_dir",
+		default=DEFAULT_DIR, metavar="DIR",
 		help="Cache directory [def: %default]")
 
 	(options, args) = parser.parse_args()
@@ -398,11 +398,11 @@ def main():
 	if not options.rls:
 		parser.error("Specify --rls or MULE_RLS environment")
 	
-	if os.path.isfile(options.cache):
-		parser.error("--cache argument is file")
+	if os.path.isfile(options.cache_dir):
+		parser.error("--directory argument is a file")
 		
-	if not os.path.isdir(options.cache):
-		os.makedirs(options.cache)
+	if not os.path.isdir(options.cache_dir):
+		os.makedirs(options.cache_dir)
 		
 	# See if RLS is ready
 	try:
@@ -420,9 +420,9 @@ def main():
 	# Configure logging (after the fork)
 	log.configure()
 	
-	l = log.get_log("agent")
+	l = log.get_log("cache")
 	try:
-		a = Agent(options.rls, options.cache)
+		a = Cache(options.rls, options.cache_dir)
 		a.run()
 	except Exception, e:
 		l.exception(e)

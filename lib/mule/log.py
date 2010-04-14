@@ -43,8 +43,8 @@ def create_console_handler():
 	
 def create_file_handler():
 	exe = os.path.basename(sys.argv[0])
-	if exe == "mule-agent":
-		logfile = os.path.join(config.get_home(),"var","agent.log")
+	if exe == "mule-cache":
+		logfile = os.path.join(config.get_home(),"var","cache.log")
 		formatter = logging.Formatter(FORMAT)
 		handler = logging.handlers.RotatingFileHandler(logfile,maxBytes=100000,backupCount=1)
 		handler.setLevel(DEFAULT_LEVEL)
