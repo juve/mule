@@ -43,8 +43,11 @@ class RLS(object):
 			self.db = db.RLSDatabase()
 			signal.signal(signal.SIGTERM, self.stop)
 			self.server.register_function(self.lookup)
+			self.server.register_function(self.multilookup)
 			self.server.register_function(self.add)
+			self.server.register_function(self.multiadd)
 			self.server.register_function(self.delete)
+			self.server.register_function(self.multidelete)
 			self.server.register_function(self.ready)
 			self.server.serve_forever()
 		except KeyboardInterrupt:
@@ -57,6 +60,16 @@ class RLS(object):
 		self.log.debug("lookup %s" % lfn)
 		return self.db.lookup(lfn)
 		
+	def multilookup(self, lfns):
+		"""
+		Look up all the pfns for a set of lfns
+		"""
+		self.log.debug("multilookup %d" % len(lfns))
+		results = {}
+		for lfn in lfns:
+			results[lfn] = self.db.lookup(lfn)
+		return results
+		
 	def add(self, lfn, pfn):
 		"""
 		Add a mapping
@@ -64,12 +77,28 @@ class RLS(object):
 		self.log.debug("add %s %s" % (lfn, pfn))
 		self.db.add(lfn, pfn)
 		
+	def multiadd(self, mappings):
+		"""
+		Add a list of mappings
+		"""
+		self.log.debug("multiadd %d" % len(mappings))
+		for lfn, pfn in mappings:
+			self.db.add(lfn, pfn)
+		
 	def delete(self, lfn, pfn=None):
 		"""
 		Delete a mapping
 		"""
 		self.log.debug("delete %s %s" % (lfn, pfn))
 		self.db.delete(lfn, pfn)
+		
+	def multidelete(self, mappings):
+		"""
+		Delete a list of mappings
+		"""
+		self.log.debug("multidelete %d" % len(mappings))
+		for lfn, pfn in mappings:
+			self.db.delete(lfn, pfn)
 		
 	def ready(self):
 		"""

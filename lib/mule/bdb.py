@@ -172,7 +172,7 @@ class CacheDatabase(Database):
 		
 	@with_transaction
 	def put(self, txn, lfn):
-		next = { 'status': 'unready', 'uuid': None }
+		next = { 'status': 'unready' }
 		self.db.put(lfn, pickle.dumps(next), txn)
 			
 	@with_transaction
@@ -195,8 +195,8 @@ class CacheDatabase(Database):
 			cur.close()
 					
 	@with_transaction
-	def update(self, txn, lfn, status, uuid):
-		next = { 'status': status, 'uuid': uuid }
+	def update(self, txn, lfn, status):
+		next = { 'status': status }
 		self.db.put(lfn, pickle.dumps(next), txn)
 
 

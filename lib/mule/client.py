@@ -36,25 +36,34 @@ def timed(function):
 def get(lfn, path, symlink):
 	# If we already have path, then skip it
 	if os.path.exists(path):
-		sys.stderr.write("Path %s already exists\n" % path)
-		return
+		raise Exception("Path %s already exists\n" % path)
 	
 	if not os.path.isabs(path):
 		path = os.path.abspath(path)
 		
 	conn = cache.connect()
-	sleeptime = 1
-	while True:
-		status = conn.get(lfn, path, symlink)
-		if status == 'unready':
-			sys.stderr.write("%s not ready: retrying in %d\n" % (lfn, sleeptime))
-			time.sleep(sleeptime)
-			sleeptime = min(sleeptime+1, 5)
-		elif status == 'ready':
-			break
-		else:
-			raise Exception("Unrecognized status: %s\n" % status)
+	conn.get(lfn, path, symlink)
 
+@timed
+def multiget(stream, symlink):
+	pairs = []
+	for l in stream.readlines():
+		l = l.strip()
+		if len(l)==0 or l.startswith('#'):
+			continue
+		lfn, path = l.split()
+		
+		if os.path.exists(path):
+			raise Exception("Path %s already exists\n" % path)
+		
+		if not os.path.isabs(path):
+			path = os.path.abspath(path)
+			
+		pairs.append([lfn, path])
+	
+	conn = cache.connect()
+	conn.multiget(pairs, symlink)
+	
 @timed	
 def put(path, lfn, rename):
 	# If the path doesn't exist, then skip it
@@ -69,6 +78,26 @@ def put(path, lfn, rename):
 	conn.put(path, lfn, rename)
 
 @timed
+def multiput(stream, symlink):
+	pairs = []
+	for l in stream.readlines():
+		l = l.strip()
+		if len(l)==0 or l.startswith('#'):
+			continue
+		path, lfn = l.split()
+		
+		if not os.path.exists(path):
+			raise Exception("Path %s does not exists\n" % path)
+		
+		if not os.path.isabs(path):
+			path = os.path.abspath(path)
+			
+		pairs.append([path, lfn])
+	
+	conn = cache.connect()
+	conn.multiput(pairs, symlink)
+	
+@timed
 def remove(lfn, force):
 	conn = cache.connect()
 	conn.remove(lfn, force)
@@ -78,7 +107,7 @@ def ls():
 	conn = cache.connect()
 	results = conn.list()
 	for rec in results:
-		print rec['lfn'], rec['status'], rec['uuid']
+		print rec['lfn'], rec['status']
 
 @timed
 def rls_add(lfn, pfn):
@@ -102,7 +131,9 @@ def usage():
 	sys.stderr.write("""
 Commands:
    get LFN PATH     Download LFN and store it at PATH
+   multiget         Fetch multiple LFNs
    put PATH LFN     Upload PATH to LFN
+   multiput         Upload multiple paths
    remove LFN       Remove LFN from cache
    list             List cache contents
    rls_add LFN PFN  Add mapping to RLS
@@ -130,6 +161,24 @@ def main():
 		lfn = args[0]
 		path = args[1]
 		get(lfn, path, options.symlink)
+	elif cmd in ['mget','multiget']:
+		parser = OptionParser("Usage: %prog multiget < input")
+		parser.add_option("-f", "--file", action="store", 
+			dest="file", metavar="FILE", default=None,
+			help="Read input from FILE [default: stdin]")
+		parser.add_option("-s", "--symlink", action="store_true", 
+			dest="symlink", default=SYMLINK,
+			help="symlink PATH to cached file [default: %default]")
+		(options, args) = parser.parse_args(args=args)
+		if options.file:
+			f = None
+			try:
+				f = open(options.file, 'r')
+				multiget(f, options.symlink)
+			finally:
+				if f: f.close()
+		else:
+			multiget(sys.stdin, options.symlink)
 	elif cmd in ['put']:
 		parser = OptionParser("Usage: %prog put PATH LFN")
 		parser.add_option("-r", "--rename", action="store_true", 
@@ -141,6 +190,24 @@ def main():
 		path = args[0]
 		lfn = args[1]
 		put(path, lfn, options.rename)
+	elif cmd in ['mput','multiput']:
+		parser = OptionParser("Usage: %prog multiput < input")
+		parser.add_option("-f", "--file", action="store", 
+			dest="file", metavar="FILE", default=None,
+			help="Read input from FILE [default: stdin]")
+		parser.add_option("-r", "--rename", action="store_true", 
+			dest="rename", default=RENAME,
+			help="rename PATH to cached file [default: %default]")
+		(options, args) = parser.parse_args(args=args)
+		if options.file:
+			f = None
+			try:
+				f = open(options.file, 'r')
+				multiput(f, options.rename)
+			finally:
+				if f: f.close()
+		else:
+			multiput(sys.stdin, options.rename)
 	elif cmd in ['remove','rm']:
 		parser = OptionParser("Usage: %prog remove [options] LFN")
 		parser.add_option("-f", "--force", action="store_true",

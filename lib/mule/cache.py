@@ -20,7 +20,8 @@ import socket
 import time
 import urllib
 import hashlib
-from threading import Lock, Thread
+from threading import Lock, Thread, Event
+from Queue import Queue
 from optparse import OptionParser
 from xmlrpclib import ServerProxy
 
@@ -39,6 +40,23 @@ def connect(host='localhost',port=CACHE_PORT):
 	"""
 	uri = "http://%s:%s" % (host, port)
 	return ServerProxy(uri, allow_none=True)
+
+def num_cpus():
+	# Python 2.6+
+	try:
+		import multiprocessing
+		return multiprocessing.cpu_count()
+	except (ImportError,NotImplementedError):
+		pass
+
+	# POSIX
+	try:
+		res = int(os.sysconf('SC_NPROCESSORS_ONLN'))
+		if res > 0: return res
+	except (AttributeError,ValueError):
+		pass
+		
+	return 1
 	
 def fqdn():
 	"""
@@ -94,19 +112,34 @@ def ensure_path(path):
 		except OSError, e:
 			if e.errno != errno.EEXIST:
 				raise
-		
+				
+class DownloadRequest(object):
+	def __init__(self, lfn, pfns):
+		self.event = Event()
+		self.lfn = lfn
+		self.pfns = pfns
+		self.exception = None
+
 class DownloadThread(Thread):
-	def __init__(self, function):
+	num = 1
+	def __init__(self, cache):
 		Thread.__init__(self)
-		self.log = log.get_log("download thread")
+		self.log = log.get_log("downloader %d" % DownloadThread.num)
+		DownloadThread.num += 1
 		self.setDaemon(True)
-		self.function = function
+		self.cache = cache
 		
 	def run(self):
-		try:
-			self.function()
-		except Exception, e:
-			self.log.exception(e)
+		while True:
+			req = self.cache.queue.get()
+			try:
+				self.cache.fetch(req.lfn, req.pfns)
+				self.cache.db.update(req.lfn, 'ready')
+			except Exception, e:
+				req.exception = e
+				self.cache.db.update(req.lfn, 'failed')
+			finally:
+				req.event.set()
 		
 class CacheHandler(server.MuleRequestHandler):
 	def do_GET(self):
@@ -129,7 +162,7 @@ class CacheHandler(server.MuleRequestHandler):
 			if f: f.close()
 		
 class Cache(object):
-	def __init__(self, rls_host, cache_dir, hostname=fqdn()):
+	def __init__(self, rls_host, cache_dir, threads, hostname=fqdn()):
 		self.log = log.get_log("cache")
 		self.rls_host = rls_host
 		self.cache_dir = cache_dir
@@ -138,7 +171,11 @@ class Cache(object):
 		                                requestHandler=CacheHandler)
 		self.server.cache = self
 		self.lock = Lock()
-		
+		self.queue = Queue()
+		for i in range(0, threads):
+			t = DownloadThread(self)
+			t.start()
+					
 	def stop(self, signum=None, frame=None):
 		self.log.info("Stopping cache...")
 		self.db.close()
@@ -150,7 +187,9 @@ class Cache(object):
 			self.db = db.CacheDatabase()
 			signal.signal(signal.SIGTERM, self.stop)
 			self.server.register_function(self.get)
+			self.server.register_function(self.multiget)
 			self.server.register_function(self.put)
+			self.server.register_function(self.multiput)
 			self.server.register_function(self.remove)
 			self.server.register_function(self.list)
 			self.server.register_function(self.rls_delete)
@@ -162,7 +201,7 @@ class Cache(object):
 			
 	def get_uuid(self, lfn):
 		"""
-		Generate a unique ID
+		Generate a unique ID for lfn
 		"""
 		return hashlib.sha1(lfn).hexdigest()
 		
@@ -185,76 +224,105 @@ class Cache(object):
 		Get lfn and store it at path
 		"""
 		self.log.debug("get %s %s" % (lfn, path))
+		self.multiget([[lfn, path]], symlink)
+	
+	def multiget(self, pairs, symlink=True):
+		"""
+		For each [lfn, path] pair get lfn and store at path
+		"""
+		created = []
+		ready = []
+		unready = []
+		for lfn, path in pairs:
+			rec = self.db.get(lfn)
+			if rec is None:
+				self.lock.acquire()
+				try:
+					rec = self.db.get(lfn)
+					if rec is None:
+						self.db.put(lfn)
+						created.append((lfn,path))
+					else:
+						unready.append((lfn,path))
+				finally:
+					self.lock.release()
+			elif rec['status'] == 'ready':
+				ready.append((lfn,path))
+			elif rec['status'] == 'unready':
+				unready.append((lfn,path))
+			elif rec['status'] == 'failed':
+				raise Exception("Unable to get %s: failed" % lfn)
+			else:
+				raise Exception("Unrecognized status: %s" % rec['status'])
 		
-		# Check path
-		if os.path.exists(path):
-			raise Exception("%s already exists" % path)
+		conn = rls.connect(self.rls_host)
 		
-		# Check to see if the file is cached
-		rec = self.db.get(lfn)
+		if len(created) > 0:
+			requests = []
+			mappings = conn.multilookup([i[0] for i in created])
+			for lfn, path in created:
+				req = DownloadRequest(lfn, mappings[lfn])
+				self.queue.put(req)
+				requests.append(req)
 		
-		# If it isn't in cache, try to get it
-		if rec is None:
-			thread = None
-			self.lock.acquire()
-			try:
+		for lfn, path in ready:
+			self.get_cached(lfn, path, symlink)
+		
+		if len(created) > 0:	
+			mappings = []
+			for req in requests:
+				req.event.wait()
+				if req.exception is None:
+					uuid = self.get_uuid(req.lfn)
+					pfn = self.get_pfn(uuid)
+					mappings.append([req.lfn, pfn])
+			
+			if len(mappings) > 0:
+				conn.multiadd(mappings)
+				
+			for req in requests:
+				if req.exception:
+					raise req.exception
+					
+			for lfn, path in created:
+				unready.append((lfn, path))
+			
+		while len(unready) > 0:
+			u = unready[:]
+			unready = []
+			for lfn, path in u:
 				rec = self.db.get(lfn)
 				if rec is None:
-					self.db.put(lfn)
-					def get_file():
-						try:
-							self.do_get(lfn, path, symlink)
-						except Exception, e:
-							self.log.exception(e)
-							self.db.update(lfn, 'failed', None)
-					thread = DownloadThread(get_file)
-					thread.start()
-			finally:
-				self.lock.release()
-			
-			# If we launched a thread, wait up to 5 seconds
-			if thread is not None:
-				thread.join(5)
-			
-			# Retrieve the latest status
-			rec = self.db.get(lfn)
-		
-		# If it is ready, then copy it to path
-		if rec['status'] == 'ready':
-			cfn = self.get_cfn(rec['uuid'])
-			self.log.debug("Copying %s to %s" % (cfn, path))
-			if not os.path.exists(cfn):
-				raise Exception("%s was not found in cache" % cfn)
-			if symlink:
-				os.symlink(cfn, path)
-			else:
-				copy(cfn, path)
-		
-		# If it failed, then raise an exception
-		if rec['status'] == 'failed':
-			raise Exception("Unable to get %s: failed" % lfn)
-		
-		# Otherwise it isn't ready, just return the current status
-		return rec['status']
+					raise Exception("Record disappeared for %s" % lfn)
+				elif rec['status'] == 'ready':
+					self.get_cached(lfn, path, symlink)
+				elif rec['status'] == 'failed':
+					raise Exception("Unable to get %s: failed" % lfn)
+				else:
+					unready.append((lfn, path))
+			if len(unready) > 0:
+				time.sleep(5)
 	
-	def do_get(self, lfn, path, symlink):
-		
-		# Lookup lfn
-		conn = rls.connect(self.rls_host)
-		pfns = conn.lookup(lfn)
-		
-		# As a last resort, get it from the source if the source is a URL
-		if lfn.startswith('http'):
+	def get_cached(self, lfn, path, symlink=True):
+		uuid = self.get_uuid(lfn)
+		cfn = self.get_cfn(uuid)
+		if not os.path.exists(cfn):
+			raise Exception("%s was not found in cache" % (lfn))
+		if symlink:
+			os.symlink(cfn, path)
+		else:
+			copy(cfn, path)
+			
+	def fetch(self, lfn, pfns):
+		if lfn.startswith("http"):
 			pfns.append(lfn)
-				
-		# If not found in RLS
+			
 		if len(pfns) == 0:
-			raise Exception('%s does not exist in RLS' % lfn)
+			raise Exception("%s not found in RLS" % lfn)
 		
 		# Create new name
 		uuid = self.get_uuid(lfn)
 		cfn = self.get_cfn(uuid)
-		pfn = self.get_pfn(uuid)
 		if os.path.exists(cfn):
 			self.log.warning("Duplicate uuid detected: %s" % uuid)
 			
@@ -272,53 +340,61 @@ class Cache(object):
 			except Exception, e:
 				self.log.exception(e)
 		
-		if success:
-			conn.add(lfn, pfn)
-			self.db.update(lfn, 'ready', uuid)
-		else:
+		if not success:
 			raise Exception('Unable to get %s: all pfns failed' % lfn)
 		
 	def put(self, path, lfn, rename=True):
 		"""
-		Put path into cache and register lfn
+		Put path into cache as lfn
 		"""
 		self.log.debug("put %s %s" % (path, lfn))
+		self.multiput([[path, lfn]], rename)
 		
-		# Check for path
-		if not os.path.exists(path):
-			raise Exception("%s does not exist", path)
+	def multiput(self, pairs, rename=True):
+		"""
+		For all [path, lfn] pairs put path into the cache as lfn
+		"""
+		# Make sure the files exist
+		for path, lfn in pairs:
+			if not os.path.exists(path):
+				raise Exception("%s does not exist", path)
 		
-		# If its already in cache, then return
-		if self.db.get(lfn) is not None:
-			self.log.error("%s already cached" % lfn)
-			return
+		# Add them to the cache
+		mappings = []
+		for path, lfn in pairs:
+			# If its already in cache, then skip it
+			if self.db.get(lfn) is not None:
+				self.log.warning("%s already cached" % lfn)
+				continue
 		
-		# Create new names
-		uuid = self.get_uuid(lfn)
-		cfn = self.get_cfn(uuid)
-		pfn = self.get_pfn(uuid)
-		if os.path.exists(cfn):
-			self.log.warning("Duplicate uuid detected: %s" % uuid)
+			# Create new names
+			uuid = self.get_uuid(lfn)
+			cfn = self.get_cfn(uuid)
+			pfn = self.get_pfn(uuid)
+			if os.path.exists(cfn):
+				self.log.warning("Possible duplicate uuid detected: %s" % uuid)
 		
-		# Create dir if needed
-		d = os.path.dirname(cfn)
-		ensure_path(d)
+			# Create dir if needed
+			d = os.path.dirname(cfn)
+			ensure_path(d)
 		
-		# Create an entry in the cache db
-		self.db.put(lfn)
+			# Create an entry in the cache db
+			self.db.put(lfn)
 		
-		# Move path to cache
-		if rename:
-			os.rename(path, cfn)
-		else:
-			copy(path, cfn)
+			# Move path to cache
+			if rename:
+				os.rename(path, cfn)
+			else:
+				copy(path, cfn)
 		
-		# Update the cache db
-		self.db.update(lfn, 'ready', uuid)
+			# Update the cache db
+			self.db.update(lfn, 'ready')
 		
-		# Register lfn->pfn
+			mappings.append([lfn, pfn])
+		
+		# Register lfn->pfn mappings
 		conn = rls.connect(self.rls_host)
-		conn.add(lfn, pfn)
+		conn.multiadd(mappings)
 		
 	def remove(self, lfn, force=False):
 		"""
@@ -335,8 +411,9 @@ class Cache(object):
 		# Remove from database
 		self.db.remove(lfn)
 		
-		uuid = rec['uuid']
-		if uuid is not None:
+		if rec['status'] == 'ready':
+			uuid = self.get_uuid(lfn)
+			
 			# Remove RLS mapping
 			pfn = self.get_pfn(uuid)
 			conn = rls.connect(self.rls_host)
@@ -385,10 +462,13 @@ def main():
 		help="Do not fork [default: fork]")
 	parser.add_option("-r", "--rls", action="store", dest="rls",
 		default=DEFAULT_RLS, metavar="HOST",
-		help="RLS host [def: %default]")
-	parser.add_option("-d", "--directory", action="store", dest="cache_dir",
+		help="RLS host [default: %default]")
+	parser.add_option("-d", "--dir", action="store", dest="cache_dir",
 		default=DEFAULT_DIR, metavar="DIR",
-		help="Cache directory [def: %default]")
+		help="Cache directory [default: %default]")
+	parser.add_option("-t", "--threads", action="store", dest="threads",
+		default=num_cpus(), metavar="N",
+		help="Number of download threads [default: %default]")
 
 	(options, args) = parser.parse_args()
 	
@@ -422,7 +502,7 @@ def main():
 	
 	l = log.get_log("cache")
 	try:
-		a = Cache(options.rls, options.cache_dir)
+		a = Cache(options.rls, options.cache_dir, options.threads)
 		a.run()
 	except Exception, e:
 		l.exception(e)
