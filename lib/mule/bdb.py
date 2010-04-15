@@ -64,10 +64,10 @@ class DatabaseManagerThread(Thread):
 		while True:
 			try:
 				time.sleep(self.interval)
-				self.log.info("checkpointing database")
+				self.log.debug("checkpointing database")
 				self.env.txn_checkpoint(0,0)
 				if not hasattr(self.env, "log_set_config"):
-					self.log.info("archiving logs")
+					self.log.debug("archiving logs")
 					self.env.log_archive(bdb.DB_ARCH_REMOVE)
 			except:
 				t, e, tb = sys.exc_info()
