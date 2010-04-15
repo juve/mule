@@ -4,6 +4,7 @@ import os
 import subprocess
 
 def do_get(cmd, pairs):
+	cmd = cmd.replace("/kickstart","/kickstart -i /dev/stdin")
 	p = subprocess.Popen(cmd+" multiget", stdin=subprocess.PIPE, shell=True)
 	for pair in pairs:
 		p.stdin.write("%s %s\n" % (pair[0],pair[1]))
@@ -13,6 +14,7 @@ def do_get(cmd, pairs):
 		sys.exit(result[1])
 	
 def do_put(cmd, pairs):
+	cmd = cmd.replace("/kickstart","/kickstart -i /dev/stdin")
 	p = subprocess.Popen(cmd+" multiput", stdin=subprocess.PIPE, shell=True)
 	for pair in pairs:
 		p.stdin.write("%s %s\n" % (pair[0],pair[1]))
