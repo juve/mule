@@ -308,6 +308,8 @@ class Cache(object):
 		cfn = self.get_cfn(uuid)
 		if not os.path.exists(cfn):
 			raise Exception("%s was not found in cache" % (lfn))
+		# This is to support nested directories inside working dirs
+		ensure_path(os.path.dirname(path))
 		if symlink:
 			os.symlink(cfn, path)
 		else:
