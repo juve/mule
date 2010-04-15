@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+import sys
+import os
+import subprocess
+
+def do_get(cmd, pairs):
+	p = subprocess.Popen(cmd+" multiget", stdin=subprocess.PIPE, shell=True)
+	for pair in pairs:
+		p.stdin.write("%s %s\n" % (pair[0],pair[1]))
+	p.stdin.close()
+	result = os.waitpid(p.pid, 0)
+	if result[1] != 0:
+		sys.exit(result[1])
+	
+def do_put(cmd, pairs):
+	p = subprocess.Popen(cmd+" multiput", stdin=subprocess.PIPE, shell=True)
+	for pair in pairs:
+		p.stdin.write("%s %s\n" % (pair[0],pair[1]))
+	p.stdin.close()
+	result = os.waitpid(p.pid, 0)
+	if result[1] != 0:
+		sys.exit(result[1])
+	
+def do_exe(cmd):
+	p = subprocess.Popen(cmd, shell=True)
+	result = os.waitpid(p.pid, 0)
+	if result[1] != 0:
+		sys.exit(result[1])
+	
+def do_batch(op, cmd, batch):
+	if op is None or op == 'exe':
+		return
+	elif op == 'put':
+		do_put(cmd, batch)
+	elif op == 'get':
+		do_get(cmd, batch)
+	else:
+		raise Exception('Unknown operation: %s' % op)
+	
+def main():
+	cmd = None
+	batch = []
+	last = None
+	for l in sys.stdin.readlines():
+		l = l.strip()
+		if l.startswith("#"):
+			continue
+		
+		if 'mule  get' in l:
+			if last != 'get':
+				do_batch(last, cmd, batch)
+				batch = []
+			cmd = l[0:l.index('get')]
+			rec = l.split()
+			batch.append([rec[-2],rec[-1]])
+			last = 'get'
+		elif 'mule  put' in l:
+			if last != 'put':
+				do_batch(last, cmd, batch)
+				batch = []
+			cmd = l[0:l.index('put')]
+			rec = l.split()
+			batch.append([rec[-2],rec[-1]])
+			last = 'put'
+		else:
+			if last != 'exe':
+				do_batch(last, cmd, batch)
+				batch = []
+			cmd = l
+			do_exe(cmd)
+			last = 'exe'
+
+if __name__ == '__main__':
+	main()
