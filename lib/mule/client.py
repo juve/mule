@@ -87,7 +87,8 @@ def multiput(stream, symlink):
 		path, lfn = l.split()
 		
 		if not os.path.exists(path):
-			raise Exception("Path %s does not exists\n" % path)
+			sys.stderr.write("Path %s does not exists\n" % path)
+			continue
 		
 		if not os.path.isabs(path):
 			path = os.path.abspath(path)
