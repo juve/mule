@@ -22,16 +22,62 @@ in its cache, it looks it up in the replica catalog and requests it from
 one of the nodes where it is cached. When a node generates a file it saves
 it in the cache and registers it in the replica catalog.
 
+
 COMPONENTS
 ----------
-Mule consists of 3 components: a replica location service (RLS), an Agent, 
-and a Client. There is one RLS per cluster. The RLS stores mappings from
-globally-unique LFNs to PFNs. It is an XML-RPC server that supports
+Mule consists of 3 components: a replica location service (RLS), a Cache
+daemon, and a Client. There is one RLS per cluster. The RLS stores mappings
+from globally-unique LFNs to PFNs. It is an XML-RPC server that supports
 add(lfn, pfn), lookup(lfn) => pfn[], and delete(lfn, pfn). In addition
-to the RLS, there is an Agent that runs on each node. The agent
+to the RLS, there is a Cache daemon that runs on each node. The daemon
 manages a local file cache and contacts the RLS server to find LFNs
 that are not in its cache, and to update RLS with the LFNs that are in
-its cache. The Agent is an XML-RPC server that supports get(lfn, path),
-put(path, lfn), and delete(lfn). The Client is a command-line interface
-to the Agent. The Client issues get, put and delete commands to service
-requests from the workflow.
+its cache. The Cache daemon is an XML-RPC server that supports 
+get(lfn, path), put(path, lfn), and delete(lfn). The Client is a command-line
+interface to the RLS and the Cache daemon. The Client issues get, put and 
+delete commands to service requests from the workflow.
+
+
+INSTALLATION
+------------
+To install mule just check it out from SVN or unzip a source tarball and run
+make. You will need to install it on the submit host (for stage-in) and on
+the worker nodes.
+
+
+USING MULE
+----------
+To use mule configure Pegasus to use S3 mode. Then set the amazon:s3cmd
+transformation to point at MULE_HOME/bin/mule.
+
+
+WORKFLOW INPUTS
+---------------
+Mule only knows how to talk to http servers. In order to stage input 
+files into a workflow using mule they must be stored on an http server. 
+In the replica catalog the LFNs will be mapped to HTTP URL PFNs. Mule 
+will use these URLs to fetch the input files. If you don't want to set
+up an HTTP server then you can manually PUT all the input files into
+mule using the command-line client.
+
+
+WORKFLOW OUTPUTS
+----------------
+The stage-out job will GET all the files that need to be transferred from 
+mule and then invoke the transfer client. The transfer client will transfer 
+the files to their final destination.
+
+
+USING MULTIGET AND MULTIPUT
+---------------------------
+To use the multiget/multiput mode you need to configure Pegasus to use
+mule-seqexec instead of the normal seqexec.
+
+
+BLOOM FILTER MATCHMAKING
+------------------------
+In order to use bloom filters for better locality in matchmaking:
+1. Install mule
+2. Install the match function on the submit host
+3. Add Condor cron jobs to update machine ClassAds on the workers
+4. Add rank and +BloomFilter ClassAds to job using mule-update-jobs
