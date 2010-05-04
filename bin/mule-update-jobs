@@ -1,0 +1,113 @@
+#!/usr/bin/env python
+from optparse import OptionParser
+import os
+import sys
+import re
+
+home = os.path.dirname(os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(home, "lib"))
+
+from mule import bits
+
+UPDATE = True
+SIZE = 36*1024*8
+HASHES = 3
+
+def get_sub_files(directory):
+	result = []
+	for root, dirs, files in os.walk(directory):
+		subfiles = [os.path.join(root,f) for f in files if f.endswith(".sub")]
+		result += subfiles
+	return result
+
+match_get = re.compile("mule[ ]+get[ ]+([^ ]+)")
+def update_sub_file(subfile):
+	infile = subfile.replace(".sub",".in")
+	if not os.path.isfile(infile):
+		sys.stderr.write("WARNING: %s does not have an input file\n" % subfile)
+		return
+	
+	# Get all the input files for the job
+	inputs = []
+	f = open(infile)
+	for line in f.readlines():
+		m = match_get.search(line)
+		if m:
+			inputs.append(m.group(1))
+	f.close()
+	
+	# Generate bloom filter
+	bf = bits.BloomFilter(SIZE, HASHES)
+	for f in inputs:
+		bf.add(f)
+	bloom = bf.tobase64()
+	
+	# Write bloom filter to bloom files
+	bloomfile = subfile.replace(".sub",".bloom")
+	print "Writing %s..." % bloomfile
+	f = open(bloomfile,"w")
+	f.write('BloomFilter = "%s"' % bloom)
+	f.close()
+	
+	# Update subfile
+	if UPDATE:
+		print "Updating %s..." % subfile
+		for i in range(0,1000):
+			oldfile = "%s.%03d" % (subfile, i)
+			if not os.path.exists(oldfile):
+				break
+		os.rename(subfile, oldfile)
+		x = open(oldfile, 'r')
+		y = open(subfile, 'w')
+		for line in x.readlines():
+			if line.lower().strip().startswith("queue"):
+				y.write('+BloomFilter = "%s"\n' % bloom)
+				y.write('rank = bloom_compare(MY.BloomFilter, BloomFilter)\n')
+				y.write(line)
+			elif line.lower().strip().startswith("rank"):
+				pass
+			elif line.startswith("+BloomFilter"):
+				pass
+			else:
+				y.write(line)
+		y.close()
+		x.close()
+	
+	
+def update_jobs(directory):
+	if not os.path.isdir(directory):
+		sys.stderr.write("WARNING: %s is not a directory\n" % directory)
+		return
+		
+	print "Processing",directory
+	
+	subfiles = get_sub_files(directory)
+	for subfile in subfiles:
+		update_sub_file(subfile)
+	
+def main():
+	global UPDATE, SIZE, HASHES
+	parser = OptionParser("Usage: %prog [options] DIR...")
+	parser.add_option("-n", "--noupdate", action="store_false",
+		dest="update", default=UPDATE, 
+		help="Do not update submit files [default: update]")
+	parser.add_option("-m", "--size", action="store", type="int",
+		dest="size", metavar="M", default=SIZE,
+		help="Size of bloom filter [default: %default]")
+	parser.add_option("-k", "--hashes", action="store", 
+		dest="hashes", default=HASHES, metavar="K", type="int",
+		help="Number of hashes [default: %default]")
+	(options, args) = parser.parse_args()
+	
+	if len(args) == 0:
+		parser.error("Specify at least one submit directory")
+	
+	UPDATE = options.update
+	SIZE = options.size
+	HASHES = options.hashes
+	
+	for d in args:
+		update_jobs(d)
+	
+if __name__ == '__main__':
+	main()
