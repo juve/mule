@@ -17,7 +17,7 @@ import os
 import time
 import cPickle as pickle
 from threading import Thread
-from mule import log, config
+from mule import log, config, bits
 
 try:
 	import bsddb3.db as bdb
@@ -191,6 +191,19 @@ class CacheDatabase(Database):
 				result.append(rec)
 				current = cur.next()
 			return result
+		finally:
+			cur.close()
+			
+	@with_transaction
+	def get_bloom_filter(self, txn, m=36*1024*8, k=3):
+		cur = self.db.cursor(txn)
+		try:
+			bf = bits.BloomFilter(m, k)
+			current = cur.first()
+			while current is not None:
+				bf.add(current[0])
+				current = cur.next()
+			return bf
 		finally:
 			cur.close()
 					

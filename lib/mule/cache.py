@@ -195,6 +195,7 @@ class Cache(object):
 			self.server.register_function(self.rls_delete)
 			self.server.register_function(self.rls_add)
 			self.server.register_function(self.rls_lookup)
+			self.server.register_function(self.get_bloom_filter)
 			self.server.serve_forever()
 		except KeyboardInterrupt:
 			self.stop()
@@ -456,6 +457,12 @@ class Cache(object):
 		self.log.debug("lookup %s" % lfn)
 		conn = rls.connect(self.rls_host)
 		return conn.lookup(lfn)
+		
+	def get_bloom_filter(self, m, k):
+		"""
+		Return a bloom filter containing all the lfns in the cache
+		"""
+		return self.db.get_bloom_filter(m, k).tobase64()
 		
 def main():
 	parser = OptionParser()

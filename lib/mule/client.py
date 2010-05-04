@@ -127,6 +127,11 @@ def rls_delete(lfn, pfn):
 	conn = cache.connect()
 	conn.rls_delete(lfn, pfn)
 	
+@timed
+def get_bloom_filter(m, k):
+	conn = cache.connect()
+	print 'BloomFilter = "%s"' % conn.get_bloom_filter(m, k)
+	
 def usage():
 	sys.stderr.write("Usage: %s COMMAND\n" % os.path.basename(sys.argv[0]))
 	sys.stderr.write("""
@@ -140,6 +145,7 @@ Commands:
    rls_add LFN PFN  Add mapping to RLS
    rls_delete LFN   Remove mappings for LFN from RLS
    rls_lookup LFN   List RLS mappings for LFN
+   bloom            Retrieve base64-encoded bloom filter for cache
    help             Display this message
 """)
 	sys.exit(1)
@@ -251,6 +257,18 @@ def main():
 		else:
 			pfn = None
 		rls_delete(lfn, pfn)
+	elif cmd in ['bloom','bf','get_bloom','get_bloom_filter']:
+		parser = OptionParser("Usage: %prog bloom")
+		parser.add_option("-m", "--size", action="store", type="int",
+			dest="m", metavar="M", default=36*1024*8,
+			help="Size of bloom filter [default: 36*1024*8]")
+		parser.add_option("-k", "--hashes", action="store", 
+			dest="k", default=3, type="int",
+			help="Number of hashes [default: 3]")
+		(options, args) = parser.parse_args(args=args)
+		if len(args) > 0:
+			parser.error("Invalid argument")
+		get_bloom_filter(options.m, options.k)
 	elif cmd in ['-h','help','-help','--help']:
 		usage()
 	else:
