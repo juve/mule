@@ -1,6 +1,7 @@
 BSDDB3=bsddb3-5.0.0
+BITVECTOR=BitVector-2.0
 
-all: lib/bsddb3
+all: lib/bsddb3 src/libbloom.so
 
 lib/bsddb3:
 	cd externals && \
@@ -9,6 +10,10 @@ lib/bsddb3:
 	python setup.py build && \
 	mv build/lib.*/bsddb3 ../../lib
 
-clean:
-	rm -rf lib/bsddb3 externals/$(BSDDB3)
+src/libbloom.so:
+	cd src && \
+	make
 
+clean:
+	rm -rf lib/bsddb3 externals/$(BSDDB3) && \
+	cd src && make clean

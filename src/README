@@ -1,0 +1,15 @@
+INTRODUCTION
+
+This code implements a bloom filter comparison function
+that can be called in a Condor ClassAd expression.
+
+INSTALLATION
+
+To install the library compile it using the makefile
+and set the Condor configuration entry:
+
+CLASSAD_LIB_PATH = /path/to/libbloom.so
+
+Then restart Condor.
+
+NOTE: THIS ONLY WORKS WITH CONDOR <= 7.4.x.
