@@ -135,8 +135,8 @@ def get_bloom_filter(m, k):
 		print 'BloomFilter%d = "%s"' % (i, bloom[i])
 		
 @timed
-def stats():
-	conn = cache.connect()
+def stats(host):
+	conn = cache.connect(host=host)
 	st = conn.stats()
 	for k in st:
 		v = st[k]
@@ -285,10 +285,13 @@ def main():
 		get_bloom_filter(options.m, options.k)
 	elif cmd in ['stats','stat','st']:
 		parser = OptionParser("Usage: %prog stats")
+		parser.add_option("-H", "--host", action="store", type="string",
+			dest="host", default="localhost",
+			help="Host to connect to")
 		(options, args) = parser.parse_args(args=args)
 		if len(args) > 0:
 			parser.error("Invalid argument")
-		stats()
+		stats(options.host)
 	elif cmd in ['-h','help','-help','--help']:
 		usage()
 	else:
