@@ -112,7 +112,45 @@ def ensure_path(path):
 		except OSError, e:
 			if e.errno != errno.EEXIST:
 				raise
-				
+
+class Statistic(object):
+	def __init__(self, value=0):
+		self.lock = Lock()
+		self._value = value
+		
+	def increment(self, i=1):
+		self.lock.acquire()
+		try:
+			self._value += i
+		finally:
+			self.lock.release()
+	
+	def value(self):
+		return self._value
+		
+class Statistics(object):
+	def __init__(self):
+		self.since = time.ctime()
+		self.gets = Statistic()
+		self.puts = Statistic()
+		self.hits = Statistic()
+		self.misses = Statistic()
+		self.near_misses = Statistic()
+		self.failures = Statistic()
+		self.duplicates = Statistic()
+		
+	def get_map(self):
+		return {
+			'since': self.since,
+			'gets': self.gets.value(),
+			'puts': self.puts.value(),
+			'hits': self.hits.value(),
+			'misses': self.misses.value(),
+			'near_misses': self.near_misses.value(),
+			'failures': self.failures.value(),
+			'duplicates': self.duplicates.value()
+		}
+		
 class DownloadRequest(object):
 	def __init__(self, lfn, pfns):
 		self.event = Event()
@@ -167,6 +205,7 @@ class Cache(object):
 		self.rls_host = rls_host
 		self.cache_dir = cache_dir
 		self.hostname = hostname
+		self.st = Statistics()
 		self.server = server.MuleServer('', CACHE_PORT,
 		                                requestHandler=CacheHandler)
 		self.server.cache = self
@@ -196,6 +235,7 @@ class Cache(object):
 			self.server.register_function(self.rls_add)
 			self.server.register_function(self.rls_lookup)
 			self.server.register_function(self.get_bloom_filter)
+			self.server.register_function(self.stats)
 			self.server.serve_forever()
 		except KeyboardInterrupt:
 			self.stop()
@@ -235,6 +275,7 @@ class Cache(object):
 		ready = []
 		unready = []
 		for lfn, path in pairs:
+			self.st.gets.increment()
 			rec = self.db.get(lfn)
 			if rec is None:
 				self.lock.acquire()
@@ -243,15 +284,20 @@ class Cache(object):
 					if rec is None:
 						self.db.put(lfn)
 						created.append((lfn,path))
+						self.st.misses.increment()
 					else:
 						unready.append((lfn,path))
+						self.st.near_misses.increment()
 				finally:
 					self.lock.release()
 			elif rec['status'] == 'ready':
 				ready.append((lfn,path))
+				self.st.hits.increment()
 			elif rec['status'] == 'unready':
 				unready.append((lfn,path))
+				self.st.near_misses.increment()
 			elif rec['status'] == 'failed':
+				self.st.failures.increment()
 				raise Exception("Unable to get %s: failed" % lfn)
 			else:
 				raise Exception("Unrecognized status: %s" % rec['status'])
@@ -298,6 +344,7 @@ class Cache(object):
 				elif rec['status'] == 'ready':
 					self.get_cached(lfn, path, symlink)
 				elif rec['status'] == 'failed':
+					self.st.failures.increment()
 					raise Exception("Unable to get %s: failed" % lfn)
 				else:
 					unready.append((lfn, path))
@@ -365,9 +412,12 @@ class Cache(object):
 		# Add them to the cache
 		mappings = []
 		for path, lfn in pairs:
+			self.st.puts.increment()
+			
 			# If its already in cache, then skip it
 			if self.db.get(lfn) is not None:
 				self.log.warning("%s already cached" % lfn)
+				self.st.duplicates.increment()
 				continue
 		
 			# Create new names
@@ -463,6 +513,12 @@ class Cache(object):
 		Return a bloom filter containing all the lfns in the cache
 		"""
 		return self.db.get_bloom_filter(m, k).tobase64()
+		
+	def stats(self):
+		"""
+		Return the statistics for this cache
+		"""
+		return self.st.get_map()
 		
 def main():
 	parser = OptionParser()

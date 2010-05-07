@@ -133,6 +133,17 @@ def get_bloom_filter(m, k):
 	bloom = conn.get_bloom_filter(m, k)
 	for i in range(0, len(bloom)):
 		print 'BloomFilter%d = "%s"' % (i, bloom[i])
+		
+@timed
+def stats():
+	conn = cache.connect()
+	st = conn.stats()
+	for k in st:
+		v = st[k]
+		if isinstance(v, str):
+			print '%s = "%s"' % (k, v)
+		else: 
+			print '%s = %s' % (k, v)
 	
 def usage():
 	sys.stderr.write("Usage: %s COMMAND\n" % os.path.basename(sys.argv[0]))
@@ -148,6 +159,7 @@ Commands:
    rls_delete LFN   Remove mappings for LFN from RLS
    rls_lookup LFN   List RLS mappings for LFN
    bloom            Retrieve base64-encoded bloom filter for cache
+   stats            Display cache statistics
    help             Display this message
 """)
 	sys.exit(1)
@@ -271,6 +283,12 @@ def main():
 		if len(args) > 0:
 			parser.error("Invalid argument")
 		get_bloom_filter(options.m, options.k)
+	elif cmd in ['stats','stat','st']:
+		parser = OptionParser("Usage: %prog stats")
+		(options, args) = parser.parse_args(args=args)
+		if len(args) > 0:
+			parser.error("Invalid argument")
+		stats()
 	elif cmd in ['-h','help','-help','--help']:
 		usage()
 	else:
