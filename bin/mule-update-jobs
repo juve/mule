@@ -19,6 +19,25 @@ def get_sub_files(directory):
 		subfiles = [os.path.join(root,f) for f in files if f.endswith(".sub")]
 		result += subfiles
 	return result
+	
+def generate_classads(bloom):
+	ads = len(bloom)
+	
+	if ads == 1:
+		filters = ['+BloomFilter = "%s"' % bloom]
+		rank = [ "MY.BloomFilter", "BloomFilter" ]
+	else:
+		chunk = len(bloom) // CLASSADS
+		rem = len(bloom) % CLASSADS
+		start = 0
+		for i in range(0, CLASSADS):
+			end = min(len(bloom), (start + chunk))
+			filters.append('+BloomFilter%d = "%s"' % (i, bloom[start,end]))
+			rank.append("MY.BloomFilter%d"%i, "BloomFilter%d"%i)
+			start = end
+	
+	return "\n".join(filters) + "\nrank = bloom_compare(%s)" % "\n".join(rank)
+	
 
 match_get = re.compile("mule[ ]+get[ ]+([^ ]+)")
 def update_sub_file(subfile):
@@ -46,7 +65,7 @@ def update_sub_file(subfile):
 	bloomfile = subfile.replace(".sub",".bloom")
 	print "Writing %s..." % bloomfile
 	f = open(bloomfile,"w")
-	f.write('BloomFilter = "%s"' % bloom)
+	f.write(''.join(bloom))
 	f.close()
 	
 	# Update subfile
@@ -61,8 +80,11 @@ def update_sub_file(subfile):
 		y = open(subfile, 'w')
 		for line in x.readlines():
 			if line.lower().strip().startswith("queue"):
-				y.write('+BloomFilter = "%s"\n' % bloom)
-				y.write('rank = bloom_compare(MY.BloomFilter, BloomFilter)\n')
+				rank = []
+				for i in range(0, len(bloom)):
+					y.write('+BloomFilter%d = "%s"\n' % (i, bloom[i]))
+					rank.append('MY.BloomFilter%d, BloomFilter%d'%(i,i))
+				y.write('rank = bloom_compare(%s)\n' % ', '.join(rank))
 				y.write(line)
 			elif line.lower().strip().startswith("rank"):
 				pass
@@ -86,7 +108,7 @@ def update_jobs(directory):
 		update_sub_file(subfile)
 	
 def main():
-	global UPDATE, SIZE, HASHES
+	global UPDATE, SIZE, HASHES, CLASSADS
 	parser = OptionParser("Usage: %prog [options] DIR...")
 	parser.add_option("-n", "--noupdate", action="store_false",
 		dest="update", default=UPDATE, 

@@ -2,6 +2,12 @@ import math
 import array
 import base64
 
+# This is required because Condor doesn't allow ads larger 
+# than 8192 chars in cronjob classads. Note: it takes x bytes
+# to base64-encode .75x bytes, so this should give us 8000
+# character chunks.
+CHUNK_SIZE = (8000 * 3) / 4
+
 class BitSet(object):
 	def __init__(self, size):
 		"""Create a bitset capable of storing 'size' bits"""
@@ -19,7 +25,14 @@ class BitSet(object):
 		
 	def tobase64(self):
 		"""Generate a base64-encoded copy of the bitset"""
-		return base64.standard_b64encode(self.bits)
+		start = 0
+		end = 0
+		result = []
+		while end < len(self.bits):
+			end = min(len(self.bits), start + CHUNK_SIZE)
+			result.append(base64.standard_b64encode(self.bits[start:end]))
+			start = end
+		return result
 
 def hashpjw(s):
 	"""A simple and reasonable string hash function due to Peter Weinberger"""
@@ -69,9 +82,10 @@ if __name__ == '__main__':
 	bs.set(1)
 	print bs.get(1)
 	print bs.get(7)
-	bf = BloomFilter(8, 1)
-	bf.add("gideon")
-	print bf.contains("gideon")
+	bf = BloomFilter(65536, 1)
+	for i in range(0,1000):
+		bf.add("gideon_%d" % i)
+	print bf.contains("gideon_0")
 	print bf.contains("juve")
 	print bf._hash("gideon")
 	print bf.tobase64()

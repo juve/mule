@@ -130,7 +130,9 @@ def rls_delete(lfn, pfn):
 @timed
 def get_bloom_filter(m, k):
 	conn = cache.connect()
-	print 'BloomFilter = "%s"' % conn.get_bloom_filter(m, k)
+	bloom = conn.get_bloom_filter(m, k)
+	for i in range(0, len(bloom)):
+		print 'BloomFilter%d = "%s"' % (i, bloom[i])
 	
 def usage():
 	sys.stderr.write("Usage: %s COMMAND\n" % os.path.basename(sys.argv[0]))
