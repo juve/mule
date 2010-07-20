@@ -104,8 +104,8 @@ def remove(lfn, force):
 	conn.remove(lfn, force)
 
 @timed
-def ls():
-	conn = cache.connect()
+def ls(host):
+	conn = cache.connect(host=host)
 	results = conn.list()
 	for rec in results:
 		print rec['lfn'], rec['status']
@@ -144,6 +144,16 @@ def stats(host):
 			print '%s = "%s"' % (k, v)
 		else: 
 			print '%s = %s' % (k, v)
+			
+@timed
+def clear(host):
+	conn = cache.connect(host=host)
+	conn.clear()
+	
+@timed
+def rls_clear():
+	conn = cache.connect()
+	conn.rls_clear()
 	
 def usage():
 	sys.stderr.write("Usage: %s COMMAND\n" % os.path.basename(sys.argv[0]))
@@ -160,6 +170,8 @@ Commands:
    rls_lookup LFN   List RLS mappings for LFN
    bloom            Retrieve base64-encoded bloom filter for cache
    stats            Display cache statistics
+   clear            Clear all entries from cache
+   rls_clear        Clear all entries from RLS
    help             Display this message
 """)
 	sys.exit(1)
@@ -241,10 +253,13 @@ def main():
 		remove(lfn, options.force)
 	elif cmd in ['list','ls']:
 		parser = OptionParser("Usage: %prog list")
+		parser.add_option("-H", "--host", action="store", type="string",
+			dest="host", default="localhost",
+			help="Host to connect to")
 		(options, args) = parser.parse_args(args=args)
 		if len(args) > 0:
 			parser.error("Invalid argument")
-		ls()
+		ls(options.host)
 	elif cmd in ['rls_add','add']:
 		parser = OptionParser("Usage: %prog rls_add LFN PFN")
 		(options, args) = parser.parse_args(args=args)
@@ -292,6 +307,21 @@ def main():
 		if len(args) > 0:
 			parser.error("Invalid argument")
 		stats(options.host)
+	elif cmd in ['clear']:
+		parser = OptionParser("Usage: %prog clear")
+		parser.add_option("-H", "--host", action="store", type="string",
+			dest="host", default="localhost",
+			help="Host to connect to")
+		(options, args) = parser.parse_args(args=args)
+		if len(args) > 0:
+			parser.error("Invalid argument")
+		clear(options.host)
+	elif cmd in ['rls_clear']:
+		parser = OptionParser("Usage: %prog rls_clear")
+		(options, args) = parser.parse_args(args=args)
+		if len(args) > 0:
+			parser.error("Invalid argument")
+		rls_clear()
 	elif cmd in ['-h','help','-help','--help']:
 		usage()
 	else:

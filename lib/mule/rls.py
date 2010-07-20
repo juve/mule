@@ -49,6 +49,7 @@ class RLS(object):
 			self.server.register_function(self.delete)
 			self.server.register_function(self.multidelete)
 			self.server.register_function(self.ready)
+			self.server.register_function(self.clear)
 			self.server.serve_forever()
 		except KeyboardInterrupt:
 			self.stop()
@@ -106,6 +107,10 @@ class RLS(object):
 		if the RLS server is running
 		"""
 		return True
+		
+	def clear(self):
+		"""Clear all entries from db"""
+		self.db.clear()
 		
 def main():
 	parser = OptionParser()

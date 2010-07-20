@@ -236,6 +236,8 @@ class Cache(object):
 			self.server.register_function(self.rls_lookup)
 			self.server.register_function(self.get_bloom_filter)
 			self.server.register_function(self.stats)
+			self.server.register_function(self.rls_clear)
+			self.server.register_function(self.clear)
 			self.server.serve_forever()
 		except KeyboardInterrupt:
 			self.stop()
@@ -519,6 +521,28 @@ class Cache(object):
 		Return the statistics for this cache
 		"""
 		return self.st.get_map()
+		
+	def clear(self):
+		# Clear database
+		self.db.clear()
+		
+		# Remove files in cache
+		def remove_all(directory):
+			for i in os.listdir(directory):
+				path = os.path.join(directory, i)
+				if os.path.isdir(path):
+					remove_all(path)
+				else:
+					os.unlink(path)
+		remove_all(self.cache_dir)
+		
+		# Clear stats
+		self.st = Statistics()
+		
+	def rls_clear(self):
+		self.log.debug("rls clear")
+		conn = rls.connect(self.rls_host)
+		conn.clear()
 		
 def main():
 	parser = OptionParser()

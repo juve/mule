@@ -143,6 +143,17 @@ class RLSDatabase(Database):
 			cur.close()
 	
 	@with_transaction
+	def clear(self, txn):
+		cur = self.db.cursor(txn)
+		try:
+			current = cur.first()
+			while current is not None:
+				cur.delete()
+				current = cur.next()
+		finally:
+			cur.close()
+			
+	@with_transaction
 	def lookup(self, txn, lfn):
 		cur = self.db.cursor(txn)
 		try:
@@ -211,6 +222,17 @@ class CacheDatabase(Database):
 	def update(self, txn, lfn, status):
 		next = { 'status': status }
 		self.db.put(lfn, pickle.dumps(next), txn)
+		
+	@with_transaction
+	def clear(self, txn):
+		cur = self.db.cursor(txn)
+		try:
+			current = cur.first()
+			while current is not None:
+				cur.delete()
+				current = cur.next()
+		finally:
+			cur.close()
 
 
 if __name__ == '__main__':
