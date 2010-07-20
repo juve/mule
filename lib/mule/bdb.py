@@ -144,15 +144,8 @@ class RLSDatabase(Database):
 	
 	@with_transaction
 	def clear(self, txn):
-		cur = self.db.cursor(txn)
-		try:
-			current = cur.first()
-			while current is not None:
-				cur.delete()
-				current = cur.next()
-		finally:
-			cur.close()
-			
+		self.db.truncate(txn)
+					
 	@with_transaction
 	def lookup(self, txn, lfn):
 		cur = self.db.cursor(txn)
@@ -225,14 +218,7 @@ class CacheDatabase(Database):
 		
 	@with_transaction
 	def clear(self, txn):
-		cur = self.db.cursor(txn)
-		try:
-			current = cur.first()
-			while current is not None:
-				cur.delete()
-				current = cur.next()
-		finally:
-			cur.close()
+		self.db.truncate(txn)
 
 
 if __name__ == '__main__':
