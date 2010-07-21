@@ -29,7 +29,7 @@ if version < (4,7):
 	raise ImportError('bsddb version 4.7 or later required')
 del version
 
-def with_transaction(method, retries=3):
+def with_transaction(method, retries=5):
 	def with_transaction(self, *args, **kwargs):
 		deadlocks = 0
 		while True:
@@ -42,7 +42,7 @@ def with_transaction(method, retries=3):
 				txn.abort()
 				deadlocks += 1
 				if deadlocks < retries:
-					self.log.info("Deadlock detected, retrying")
+					self.log.info("Deadlock detected, retrying %d of %d" % (deadlocks,retries))
 					continue
 				else:
 					self.log.error("Deadlock detected, aborting")
