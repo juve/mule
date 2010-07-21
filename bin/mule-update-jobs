@@ -12,6 +12,8 @@ from mule import bits
 UPDATE = True
 SIZE = 36*1024*8
 HASHES = 3
+REQUIRE = None
+PRIORITY = False
 
 def get_sub_files(directory):
 	result = []
@@ -55,6 +57,10 @@ def update_sub_file(subfile):
 			inputs.append(m.group(1))
 	f.close()
 	
+	if len(inputs) == 0:
+		sys.stderr.write("WARNING: %s does not have any inputs\n" % subfile)
+		return
+	
 	# Generate bloom filter
 	bf = bits.BloomFilter(SIZE, HASHES)
 	for f in inputs:
@@ -78,6 +84,7 @@ def update_sub_file(subfile):
 		os.rename(subfile, oldfile)
 		x = open(oldfile, 'r')
 		y = open(subfile, 'w')
+		requirements = None
 		for line in x.readlines():
 			if line.lower().strip().startswith("queue"):
 				rank = []
@@ -85,9 +92,29 @@ def update_sub_file(subfile):
 					y.write('+BloomFilter%d = "%s"\n' % (i, bloom[i]))
 					rank.append('MY.BloomFilter%d, BloomFilter%d'%(i,i))
 				y.write('rank = bloom_compare(%s)\n' % ', '.join(rank))
+				if PRIORITY:
+					y.write('priority = %d\n' % len(inputs)) # priority = no. input files
+				if REQUIRE:
+					required = REQUIRE * HASHES * len(inputs)
+					compare = "bloom_compare(%s) >= %f" % (', '.join(rank), required)
+					if requirements:
+						y.write('requirements = (%s)&&(%s)\n' % (requirements,compare))
+					else:
+						y.write('requirements = (%s)\n' % compare)
+				else:
+					if requirements:
+						y.write('requirements = %s\n' % requirements)
 				y.write(line)
 			elif line.lower().strip().startswith("rank"):
 				pass
+			elif line.lower().strip().startswith("priority"):
+				if PRIORITY:
+					pass
+				else:
+					y.write(line)
+			elif line.lower().strip().startswith("requirements"):
+				rec = line.split(" =")
+				requirements = rec[1].strip()
 			elif line.startswith("+BloomFilter"):
 				pass
 			else:
@@ -108,7 +135,7 @@ def update_jobs(directory):
 		update_sub_file(subfile)
 	
 def main():
-	global UPDATE, SIZE, HASHES, CLASSADS
+	global UPDATE, SIZE, HASHES, CLASSADS, REQUIRE
 	parser = OptionParser("Usage: %prog [options] DIR...")
 	parser.add_option("-n", "--noupdate", action="store_false",
 		dest="update", default=UPDATE, 
@@ -119,6 +146,12 @@ def main():
 	parser.add_option("-k", "--hashes", action="store", 
 		dest="hashes", default=HASHES, metavar="K", type="int",
 		help="Number of hashes [default: %default]")
+	parser.add_option("-r", "--require", action="store",
+		dest="require", default=None, metavar="P", type="float",
+		help="Require number of matched files to be >= P fraction of # inputs")
+	parser.add_option("-p", "--priority", action="store_true",
+		dest="priority", default=PRIORITY, 
+		help="Add priority to jobs")
 	(options, args) = parser.parse_args()
 	
 	if len(args) == 0:
@@ -127,6 +160,9 @@ def main():
 	UPDATE = options.update
 	SIZE = options.size
 	HASHES = options.hashes
+	REQUIRE = options.require
+	if REQUIRE and (REQUIRE > 1 or REQUIRE < 0):
+		parser.error("--require must be between 0 and 1")
 	
 	for d in args:
 		update_jobs(d)
