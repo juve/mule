@@ -34,12 +34,12 @@ def timed(function):
 
 @timed
 def get(lfn, path, symlink):
-	# If we already have path, then skip it
-	if os.path.exists(path):
-		raise Exception("Path %s already exists\n" % path)
-	
 	if not os.path.isabs(path):
 		path = os.path.abspath(path)
+		
+	if os.path.exists(path):
+		sys.stderr.write("Path %s already exists. Removing." % path)
+		os.unlink(path)
 		
 	conn = cache.connect()
 	conn.get(lfn, path, symlink)
@@ -52,13 +52,14 @@ def multiget(stream, symlink):
 		if len(l)==0 or l.startswith('#'):
 			continue
 		lfn, path = l.split()
-		
-		if os.path.exists(path):
-			raise Exception("Path %s already exists\n" % path)
-		
+
 		if not os.path.isabs(path):
 			path = os.path.abspath(path)
-			
+					
+		if os.path.exists(path):
+			sys.stderr.write("Path %s already exists. Removing." % path)
+			os.unlink(path)
+		
 		pairs.append([lfn, path])
 	
 	conn = cache.connect()
