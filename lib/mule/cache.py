@@ -18,7 +18,7 @@ import errno
 import signal
 import socket
 import time
-import urllib
+import urllib2
 import hashlib
 from threading import Lock, Thread, Event
 from Queue import Queue
@@ -95,7 +95,7 @@ def download(url, path):
 	f = None
 	g = None
 	try:
-		f = urllib.urlopen(url)
+		f = urllib2.urlopen(url)
 		g = open(path, 'wb')
 		copyobj(f, g)
 	finally:
@@ -366,9 +366,10 @@ class Cache(object):
 			copy(cfn, path)
 			
 	def fetch(self, lfn, pfns):
-		if lfn.startswith("http"):
-			pfns.append(lfn)
-			
+		for protocol in ['http:','https:','file:','ftp:']:
+			if lfn.startswith(protocol):
+				pfns.append(lfn)
+					
 		if len(pfns) == 0:
 			raise Exception("%s not found in RLS" % lfn)
 		
