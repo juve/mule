@@ -135,7 +135,7 @@ def update_jobs(directory):
 		update_sub_file(subfile)
 	
 def main():
-	global UPDATE, SIZE, HASHES, CLASSADS, REQUIRE
+	global UPDATE, SIZE, HASHES, CLASSADS, REQUIRE, PRIORITY
 	parser = OptionParser("Usage: %prog [options] DIR...")
 	parser.add_option("-n", "--noupdate", action="store_false",
 		dest="update", default=UPDATE, 
@@ -163,6 +163,7 @@ def main():
 	REQUIRE = options.require
 	if REQUIRE and (REQUIRE > 1 or REQUIRE < 0):
 		parser.error("--require must be between 0 and 1")
+	PRIORITY = options.priority
 	
 	for d in args:
 		update_jobs(d)
