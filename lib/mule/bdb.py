@@ -101,10 +101,12 @@ class Database(object):
 			self.db.set_flags(bdb.DB_DUPSORT)
 		if bdb.version() > (4,1):
 			txn = self.env.txn_begin()
-			self.db.open(self.dbpath, name, flags=bdb.DB_CREATE|bdb.DB_THREAD, dbtype=bdb.DB_BTREE, txn=txn)
+			self.db.open(self.dbpath, name, flags=bdb.DB_CREATE|bdb.DB_THREAD|bdb.DB_READ_UNCOMMITTED, 
+				dbtype=bdb.DB_BTREE, txn=txn)
 			txn.commit()
 		else:
-			self.db.open(self.dbpath, name, flags=bdb.DB_CREATE|bdb.DB_THREAD, dbtype=bdb.DB_BTREE)
+			self.db.open(self.dbpath, name, flags=bdb.DB_CREATE|bdb.DB_THREAD|bdb.DB_READ_UNCOMMITTED,
+				dbtype=bdb.DB_BTREE)
 			
 		self.thread = DatabaseManagerThread(self.env)
 		self.thread.start()
