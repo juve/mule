@@ -24,6 +24,7 @@ from threading import Lock, Thread, Event
 from Queue import Queue
 from optparse import OptionParser
 from xmlrpclib import ServerProxy
+import random
 
 from mule import config, log, util, rls, server
 from mule import bdb as db
@@ -366,9 +367,18 @@ class Cache(object):
 			copy(cfn, path)
 			
 	def fetch(self, lfn, pfns):
-		for protocol in ['http:','https:','file:','ftp:']:
+		# Add some randomness so not all files are fetched
+		# from the same server.
+		random.shuffle(pfns)
+		
+		# Also try the lfn if it is a URL
+		for protocol in ['http://','https://','ftp://']:
 			if lfn.startswith(protocol):
 				pfns.append(lfn)
+		
+		# Try and prefer lfns that are 'file://' URLs
+		if lfn.startswith('file://'):
+			pfns.insert(0,lfn)
 					
 		if len(pfns) == 0:
 			raise Exception("%s not found in RLS" % lfn)
