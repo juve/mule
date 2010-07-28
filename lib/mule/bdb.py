@@ -33,7 +33,7 @@ def with_transaction(method, retries=5):
 	def with_transaction(self, *args, **kwargs):
 		deadlocks = 0
 		while True:
-			txn = self.env.txn_begin(flags=bdb.DB_TXN_NOSYNC)
+			txn = self.env.txn_begin()
 			try:
 				result = method(self, txn, *args, **kwargs)
 				txn.commit()
