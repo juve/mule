@@ -18,6 +18,7 @@ import time
 from optparse import OptionParser
 
 from mule import cache
+from mule import rls
 
 SYMLINK = os.getenv("MULE_SYMLINK","false").lower() == "true"
 RENAME = os.getenv("MULE_RENAME","false").lower() == "true"
@@ -129,6 +130,23 @@ def rls_delete(lfn, pfn):
 	conn.rls_delete(lfn, pfn)
 	
 @timed
+def rls_direct_add(rls_host, lfn, pfn):
+	conn = rls.connect(rls_host)
+	conn.add(lfn, pfn)
+
+@timed
+def rls_direct_lookup(rls_host, lfn):
+	conn = rls.connect(rls_host)
+	pfns = conn.lookup(lfn)
+	for pfn in pfns:
+		print pfn
+
+@timed
+def rls_direct_delete(rls_host, lfn, pfn):
+	conn = rls.connect(rls_host)
+	conn.delete(lfn, pfn)
+
+@timed
 def get_bloom_filter(m, k):
 	conn = cache.connect()
 	bloom = conn.get_bloom_filter(m, k)
@@ -160,20 +178,23 @@ def usage():
 	sys.stderr.write("Usage: %s COMMAND\n" % os.path.basename(sys.argv[0]))
 	sys.stderr.write("""
 Commands:
-   get LFN PATH     Download LFN and store it at PATH
-   multiget         Fetch multiple LFNs
-   put PATH LFN     Upload PATH to LFN
-   multiput         Upload multiple paths
-   remove LFN       Remove LFN from cache
-   list             List cache contents
-   rls_add LFN PFN  Add mapping to RLS
-   rls_delete LFN   Remove mappings for LFN from RLS
-   rls_lookup LFN   List RLS mappings for LFN
-   bloom            Retrieve base64-encoded bloom filter for cache
-   stats            Display cache statistics
-   clear            Clear all entries from cache
-   rls_clear        Clear all entries from RLS
-   help             Display this message
+   get LFN PATH                     Download LFN and store it at PATH
+   multiget                         Fetch multiple LFNs
+   put PATH LFN                     Upload PATH to LFN
+   multiput                         Upload multiple paths
+   remove LFN                       Remove LFN from cache
+   list                             List cache contents
+   rls_add LFN PFN                  Add mapping to RLS
+   rls_delete LFN                   Remove mappings for LFN from RLS
+   rls_lookup LFN                   List RLS mappings for LFN
+   bloom                            Retrieve base64-encoded bloom filter for cache
+   stats                            Display cache statistics
+   clear                            Clear all entries from cache
+   rls_clear                        Clear all entries from RLS
+   rls_direct_add RLSHOST LFN PFN   Add mapping to RLS w/o going through cache
+   rls_direct_delete LFN            Remove mappings for LFN from RLS w/o going through cache
+   rls_direct_lookup LFN            List RLS mappings for LFN w/o going through cache 
+   help                             Display this message
 """)
 	sys.exit(1)
 	
@@ -287,6 +308,35 @@ def main():
 		else:
 			pfn = None
 		rls_delete(lfn, pfn)
+	elif cmd in ['rls_direct_add']:
+		parser = OptionParser("Usage: %prog rls_direct_add RLS_HOST LFN PFN")
+		(options, args) = parser.parse_args(args=args)
+		if len(args) != 3:
+			parser.error("Specify RLSHOST, LFN and PFN")
+		rls_host = args[0]
+		lfn = args[1]
+		pfn = args[2]
+		rls_direct_add(rls_host, lfn, pfn)
+	elif cmd in ['rls_direct_lookup']:
+		parser = OptionParser("Usage: %prog rls_direct_lookup RLSHOST LFN")
+		(options, args) = parser.parse_args(args=args)
+		if len(args) != 2:
+			parser.error("Specify RLSHOST and LFN")
+		rls_host = args[0]
+		lfn = args[1]
+		rls_direct_lookup(rls_host, lfn)
+	elif cmd in ['rls_direct_delete']:
+		parser = OptionParser("Usage: %prog rls_direct_delete RLSHOST LFN [PFN]")
+		(options, args) = parser.parse_args(args=args)
+		if len(args) not in [2,3]:
+			parser.error("Specify RLSHOST, LFN and/or PFN")
+		rls_host = args[0]
+		lfn = args[1]
+		if len(args) > 2:
+			pfn = args[2]
+		else:
+			pfn = None
+		rls_direct_delete(rls_host, lfn, pfn)
 	elif cmd in ['bloom','bf','get_bloom','get_bloom_filter']:
 		parser = OptionParser("Usage: %prog bloom")
 		parser.add_option("-m", "--size", action="store", type="int",
