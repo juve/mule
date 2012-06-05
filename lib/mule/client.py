@@ -174,6 +174,11 @@ def rls_clear():
 	conn = cache.connect()
 	conn.rls_clear()
 	
+@timed
+def rls_direct_clear(rls_host):
+	conn = rls.connect(rls_host)
+	conn.clear()
+
 def usage():
 	sys.stderr.write("Usage: %s COMMAND\n" % os.path.basename(sys.argv[0]))
 	sys.stderr.write("""
@@ -192,8 +197,9 @@ Commands:
    clear                            Clear all entries from cache
    rls_clear                        Clear all entries from RLS
    rls_direct_add RLSHOST LFN PFN   Add mapping to RLS w/o going through cache
-   rls_direct_delete LFN            Remove mappings for LFN from RLS w/o going through cache
-   rls_direct_lookup LFN            List RLS mappings for LFN w/o going through cache 
+   rls_direct_delete RLSHOST LFN    Remove mappings for LFN from RLS w/o going through cache
+   rls_direct_lookup RLSHOST LFN    List RLS mappings for LFN w/o going through cache
+   rls_direct_clear RLSHOST         Clear all entries from RLS w/o going through cache
    help                             Display this message
 """)
 	sys.exit(1)
@@ -373,6 +379,13 @@ def main():
 		if len(args) > 0:
 			parser.error("Invalid argument")
 		rls_clear()
+	elif cmd in ['rls_direct_clear']:
+		parser = OptionParser("Usage: %prog rls_direct_clear RLSHOST")
+		(options, args) = parser.parse_args(args=args)
+		if len(args) != 1:
+			parser.error("Specify RLSHOST")
+		rls_host = args[0]
+		rls_direct_clear(rls_host)
 	elif cmd in ['-h','help','-help','--help']:
 		usage()
 	else:
