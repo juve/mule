@@ -135,6 +135,12 @@ def rls_direct_add(rls_host, lfn, pfn):
 	conn.add(lfn, pfn)
 
 @timed
+def rls_direct_add_bench(rls_host, prefix):
+	conn = rls.connect(rls_host)
+	for i in range(0, 1000):
+		conn.add(prefix+str(i), prefix+str(i))
+
+@timed
 def rls_direct_lookup(rls_host, lfn):
 	conn = rls.connect(rls_host)
 	pfns = conn.lookup(lfn)
@@ -183,24 +189,25 @@ def usage():
 	sys.stderr.write("Usage: %s COMMAND\n" % os.path.basename(sys.argv[0]))
 	sys.stderr.write("""
 Commands:
-   get LFN PATH                     Download LFN and store it at PATH
-   multiget                         Fetch multiple LFNs
-   put PATH LFN                     Upload PATH to LFN
-   multiput                         Upload multiple paths
-   remove LFN                       Remove LFN from cache
-   list                             List cache contents
-   rls_add LFN PFN                  Add mapping to RLS
-   rls_delete LFN                   Remove mappings for LFN from RLS
-   rls_lookup LFN                   List RLS mappings for LFN
-   bloom                            Retrieve base64-encoded bloom filter for cache
-   stats                            Display cache statistics
-   clear                            Clear all entries from cache
-   rls_clear                        Clear all entries from RLS
-   rls_direct_add RLSHOST LFN PFN   Add mapping to RLS w/o going through cache
-   rls_direct_delete RLSHOST LFN    Remove mappings for LFN from RLS w/o going through cache
-   rls_direct_lookup RLSHOST LFN    List RLS mappings for LFN w/o going through cache
-   rls_direct_clear RLSHOST         Clear all entries from RLS w/o going through cache
-   help                             Display this message
+   get LFN PATH                            Download LFN and store it at PATH
+   multiget                                Fetch multiple LFNs
+   put PATH LFN                            Upload PATH to LFN
+   multiput                                Upload multiple paths
+   remove LFN                              Remove LFN from cache
+   list                                    List cache contents
+   rls_add LFN PFN                         Add mapping to RLS
+   rls_delete LFN                          Remove mappings for LFN from RLS
+   rls_lookup LFN                          List RLS mappings for LFN
+   bloom                                   Retrieve base64-encoded bloom filter for cache
+   stats                                   Display cache statistics
+   clear                                   Clear all entries from cache
+   rls_clear                               Clear all entries from RLS
+   rls_direct_add RLSHOST LFN PFN          Add mapping to RLS w/o going through cache
+   rls_direct_delete RLSHOST LFN           Remove mappings for LFN from RLS w/o going through cache
+   rls_direct_lookup RLSHOST LFN           List RLS mappings for LFN w/o going through cache
+   rls_direct_clear RLSHOST                Clear all entries from RLS w/o going through cache
+   rls_direct_add_bench RLSHOST PREFIX     For benchmarking the RLS by sending it 1000 requests
+   help                                    Display this message
 """)
 	sys.exit(1)
 	
@@ -323,6 +330,14 @@ def main():
 		lfn = args[1]
 		pfn = args[2]
 		rls_direct_add(rls_host, lfn, pfn)
+	elif cmd in ['rls_direct_add_bench']:
+		parser = OptionParser("Usage: %prog rls_direct_add_bench RLS_HOST PREFIX")
+		(options, args) = parser.parse_args(args=args)
+		if len(args) != 2:
+			parser.error("Specify RLSHOST and PREFIX")
+		rls_host = args[0]
+		prefix = args[1]
+		rls_direct_add_bench(rls_host, prefix)
 	elif cmd in ['rls_direct_lookup']:
 		parser = OptionParser("Usage: %prog rls_direct_lookup RLSHOST LFN")
 		(options, args) = parser.parse_args(args=args)
