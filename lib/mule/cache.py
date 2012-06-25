@@ -406,14 +406,14 @@ class Cache(object):
 		if not success:
 			raise Exception('Unable to get %s: all pfns failed' % lfn)
 		
-	def put(self, path, lfn, rename=True):
+	def put(self, path, lfn, smart_move=True):
 		"""
 		Put path into cache as lfn
 		"""
 		self.log.debug("put %s %s" % (path, lfn))
-		self.multiput([[path, lfn]], rename)
+		self.multiput([[path, lfn]], smart_move)
 		
-	def multiput(self, pairs, rename=True):
+	def multiput(self, pairs, smart_move=True):
 		"""
 		For all [path, lfn] pairs put path into the cache as lfn
 		"""
@@ -448,8 +448,13 @@ class Cache(object):
 			self.db.put(lfn)
 		
 			# Move path to cache
-			if rename:
-				os.rename(path, cfn)
+			if smart_move:
+				try:
+					os.rename(path, cfn)
+					os.symlink(cfn, path)
+				except OSError:
+					#Looks like we can't rename, probably because the files are on different volumes
+					copy(path, cfn)
 			else:
 				copy(path, cfn)
 		

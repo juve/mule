@@ -21,7 +21,7 @@ from mule import cache
 from mule import rls
 
 SYMLINK = os.getenv("MULE_SYMLINK","false").lower() == "true"
-RENAME = os.getenv("MULE_RENAME","false").lower() == "true"
+SMART_MOVE = os.getenv("MULE_SMART_MOVE","false").lower() == "true"
 
 def timed(function):
 	def timer(*args, **kwargs):
@@ -67,7 +67,7 @@ def multiget(stream, symlink):
 	conn.multiget(pairs, symlink)
 	
 @timed	
-def put(path, lfn, rename):
+def put(path, lfn, smart_move):
 	# If the path doesn't exist, then skip it
 	if not os.path.exists(path):
 		sys.stderr.write("Path %s does not exist\n" % path)
@@ -77,7 +77,7 @@ def put(path, lfn, rename):
 		path = os.path.abspath(path)
 	
 	conn = cache.connect()
-	conn.put(path, lfn, rename)
+	conn.put(path, lfn, smart_move)
 
 @timed
 def multiput(stream, symlink):
@@ -249,33 +249,33 @@ def main():
 			multiget(sys.stdin, options.symlink)
 	elif cmd in ['put']:
 		parser = OptionParser("Usage: %prog put PATH LFN")
-		parser.add_option("-r", "--rename", action="store_true", 
-			dest="rename", default=RENAME,
-			help="rename PATH to cached file [default: %default]")
+		parser.add_option("-s", "--smart_move", action="store_true", 
+			dest="smart_move", default=SMART_MOVE,
+			help="move PATH to cache and create a symlink back (if move is a simple rename) otherwise copy PATH to cache[default: %default]")
 		(options, args) = parser.parse_args(args=args)
 		if len(args) != 2:
 			pasrser.error("Specify PATH and LFN")
 		path = args[0]
 		lfn = args[1]
-		put(path, lfn, options.rename)
+		put(path, lfn, options.smart_move)
 	elif cmd in ['mput','multiput']:
 		parser = OptionParser("Usage: %prog multiput < input")
 		parser.add_option("-f", "--file", action="store", 
 			dest="file", metavar="FILE", default=None,
 			help="Read input from FILE [default: stdin]")
-		parser.add_option("-r", "--rename", action="store_true", 
-			dest="rename", default=RENAME,
-			help="rename PATH to cached file [default: %default]")
+		parser.add_option("-s", "--smart_move", action="store_true", 
+			dest="smart_move", default=SMART_MOVE,
+			help="move PATH to cache and create a symlink back (if move is a simple rename) otherwise copy PATH to cache[default: %default]")
 		(options, args) = parser.parse_args(args=args)
 		if options.file:
 			f = None
 			try:
 				f = open(options.file, 'r')
-				multiput(f, options.rename)
+				multiput(f, options.smart_move)
 			finally:
 				if f: f.close()
 		else:
-			multiput(sys.stdin, options.rename)
+			multiput(sys.stdin, options.smart_move)
 	elif cmd in ['remove','rm']:
 		parser = OptionParser("Usage: %prog remove [options] LFN")
 		parser.add_option("-f", "--force", action="store_true",
