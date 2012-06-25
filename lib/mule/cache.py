@@ -454,6 +454,7 @@ class Cache(object):
 					os.symlink(cfn, path)
 				except OSError:
 					#Looks like we can't rename, probably because the files are on different volumes
+					self.log.warning("Simple rename failed, falling back to copy")
 					copy(path, cfn)
 			else:
 				copy(path, cfn)
